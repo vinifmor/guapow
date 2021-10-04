@@ -1,0 +1,1 @@
+launcher.skip_mapping=1

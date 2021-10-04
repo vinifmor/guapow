@@ -1,0 +1,16 @@
+[Unit]
+Description=guapow-watch
+Requires=network.target
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/guapow-watch
+Environment=GUAPOW_WATCH_SERVICE=1
+Environment=GUAPOW_WATCH_LOG=1
+Environment=GUAPOW_WATCH_LOG_LEVEL=info
+Environment=PYTHONUNBUFFERED=1
+Nice=1
+
+[Install]
+WantedBy=multi-user.target

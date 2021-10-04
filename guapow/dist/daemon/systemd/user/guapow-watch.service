@@ -1,0 +1,13 @@
+[Unit]
+Description=guapow-watch
+
+[Service]
+ExecStart=/usr/bin/guapow-watch
+Environment=PYTHONUNBUFFERED=1
+Environment=GUAPOW_WATCH_SERVICE=1
+Environment=GUAPOW_WATCH_LOG=1
+Environment=GUAPOW_WATCH_LOG_LEVEL=info
+Nice=1
+
+[Install]
+WantedBy=default.target

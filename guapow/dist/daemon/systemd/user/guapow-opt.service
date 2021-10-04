@@ -1,0 +1,9 @@
+[Unit]
+Description=guapow-opt
+
+[Service]
+ExecStart=/usr/bin/guapow-opt
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

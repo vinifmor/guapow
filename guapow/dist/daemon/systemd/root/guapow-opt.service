@@ -1,0 +1,16 @@
+[Unit]
+Description=guapow-opt
+Requires=network.target
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/guapow-opt
+Environment=GUAPOW_OPT_SERVICE=1
+Environment=GUAPOW_OPT_LOG=1
+Environment=GUAPOW_OPT_LOG_LEVEL=INFO
+Environment=PYTHONUNBUFFERED=1
+Nice=-1
+
+[Install]
+WantedBy=multi-user.target
