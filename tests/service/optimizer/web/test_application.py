@@ -20,7 +20,7 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value='123')
     @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
     async def test__must_add_decrypt_text_middleware_when_machine_id_is_available(self, map_home_users: Mock, read_machine_id: Mock):
-        app = await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
+        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
         self.assertIsInstance(app, web.Application)
 
         self.assertIn('machine_id', app)
@@ -34,7 +34,7 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
     async def test__must_not_add_decrypt_request_middleware_when_machine_id_is_unavailable(self, map_home_users: Mock, read_machine_id: Mock):
-        app =await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
+        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
         self.assertIsInstance(app, web.Application)
 
         self.assertNotIn('machine_id', app)
@@ -47,7 +47,7 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
     async def test__must_not_add_decrypt_request_middleware_when_optimizer_config_has_decryption_set_to_false(self, map_home_users: Mock, read_machine_id: Mock):
         self.config.request.encrypted = False
-        app =await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
+        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
         self.assertIsInstance(app, web.Application)
 
         self.assertNotIn('machine_id', app)
@@ -57,49 +57,10 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
         map_home_users.assert_called_once()
 
     @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
-    @patch(f'{__app_name__}.service.optimizer.web.application.systemd.is_available', return_value=True)
-    @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
-    async def test__must_add_a_callback_to_notify_systemd_when_it_is_available_and_running_as_a_service(self, map_home_users: Mock, systemd_available: Mock, read_machine_id: Mock):
-        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(), service=True, config=self.config, logger=Mock())
-        self.assertIsInstance(app, web.Application)
-
-        self.assertEqual(1, len([f for f in app.on_startup if f.__name__ == 'notify_systemd']))
-
-        read_machine_id.assert_called_once()
-        systemd_available.assert_called_once()
-        map_home_users.assert_called_once()
-
-    @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
-    @patch(f'{__app_name__}.service.optimizer.web.application.systemd.is_available')
-    @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
-    async def test__must_not_add_a_callback_to_notify_systemd_when_not_running_as_service(self, map_home_users: Mock, systemd_available: Mock, read_machine_id: Mock):
-        app =await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
-        self.assertIsInstance(app, web.Application)
-
-        self.assertEqual(0, len([f for f in app.on_startup if f.__name__ == 'notify_systemd']))
-
-        read_machine_id.assert_called_once()
-        systemd_available.assert_not_called()
-        map_home_users.assert_called_once()
-
-    @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
-    @patch(f'{__app_name__}.service.optimizer.web.application.systemd.is_available', return_value=False)
-    @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
-    async def test__must_not_add_a_callback_to_notify_systemd_when_systemd_available_but_not_running_as_service(self, map_home_users: Mock, systemd_available: Mock, read_machine_id: Mock):
-        app = await create_web_app(handler=Mock(), service=True, config=self.config, logger=Mock(), queue=OptimizationQueue.empty())
-        self.assertIsInstance(app, web.Application)
-
-        self.assertEqual(0, len([f for f in app.on_startup if f.__name__ == 'notify_systemd']))
-
-        read_machine_id.assert_called_once()
-        systemd_available.assert_called_once()
-        map_home_users.assert_called_once()
-
-    @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1})
     async def test__must_always_add_the_optimize_route(self, map_home_users: Mock, read_machine_id: Mock):
         handler = Mock()
-        app = await create_web_app(handler=handler, service=False, config=self.config, logger=Mock(), queue=OptimizationQueue.empty())
+        app = await create_web_app(handler=handler, config=self.config, logger=Mock(), queue=OptimizationQueue.empty())
         self.assertIsInstance(app, web.Application)
 
         self.assertIn('handler', app)
@@ -117,7 +78,7 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.web.application.read_machine_id', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.web.application.map_home_users', return_value={'test': 1, 'root': 0})
     async def test__must_add_home_users_to_the_context_when_allowed_are_not_defined(self, map_home_users: Mock, read_machine_id: Mock):
-        app =await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
+        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
         self.assertIsInstance(app, web.Application)
         self.assertEqual({'test': 1, 'root': 0}, app['allowed_users'])
         read_machine_id.assert_called_once()
@@ -128,7 +89,7 @@ class CreateWebAppTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.web.application.map_all_users', return_value={'root': 0, 'test': 1})
     async def test__must_only_add_defined_existing_allowed_users_to_the_context(self, map_all_users: Mock, map_home_users: Mock, read_machine_id: Mock):
         self.config.request.allowed_users = {'test', 'abc'}  # 'abc' does not exist
-        app =await create_web_app(handler=Mock(), service=False, queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
+        app = await create_web_app(handler=Mock(), queue=OptimizationQueue.empty(),  config=self.config, logger=Mock())
         self.assertIsInstance(app, web.Application)
         self.assertEqual({'test': 1}, app['allowed_users'])
         read_machine_id.assert_called_once()

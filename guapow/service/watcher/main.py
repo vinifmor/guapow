@@ -4,7 +4,6 @@ import os
 import time
 
 from guapow import __app_name__
-from guapow.common import systemd
 from guapow.common.auth import read_machine_id
 from guapow.common.config import read_optimizer_config
 from guapow.common.log import new_logger, get_log_level
@@ -60,9 +59,6 @@ async def watch():
     context = ProcessWatcherContext(user_id=os.getuid(), user_name=getpass.getuser(), user_env=user_env,
                                     logger=logger, optimized={}, opt_config=opt_config, watch_config=watch_config,
                                     mapping_file_path=mapping.get_default_file_path(user_id, user_name, logger), machine_id=machine_id)
-
-    if service and systemd.is_available():
-        await systemd.notify_ready()
 
     regex_mapper = RegexMapper(cache=watch_config.regex_cache, logger=logger)
     watcher = ProcessWatcher(regex_mapper, context)

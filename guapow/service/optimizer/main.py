@@ -120,7 +120,7 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
 
     handler = OptimizationHandler(context=context, tasks_man=tasks_man, watcher_man=watcher_man,
                                   profile_reader=profile_reader)
-    return await create_web_app(handler=handler, queue=context.queue, service=is_service, config=opt_config, logger=logger), opt_config
+    return await create_web_app(handler=handler, queue=context.queue, config=opt_config, logger=logger), opt_config
 
 
 if __name__ == '__main__':

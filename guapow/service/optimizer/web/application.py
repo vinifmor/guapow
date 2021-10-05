@@ -2,16 +2,15 @@ from logging import Logger
 
 from aiohttp import web
 
-from guapow.common import systemd
 from guapow.common.auth import read_machine_id
 from guapow.common.config import OptimizerConfig
 from guapow.common.users import map_home_users, map_all_users
-from guapow.service.optimizer.handler import OptimizationHandler
 from guapow.service.optimizer.flow import OptimizationQueue
+from guapow.service.optimizer.handler import OptimizationHandler
 from guapow.service.optimizer.web import routes, middlewares
 
 
-async def create_web_app(handler: OptimizationHandler, queue: OptimizationQueue, service: bool, config: OptimizerConfig, logger: Logger) -> web.Application:
+async def create_web_app(handler: OptimizationHandler, queue: OptimizationQueue, config: OptimizerConfig, logger: Logger) -> web.Application:
     app = web.Application()
     app.logger = logger
     app['queue'] = queue
@@ -38,13 +37,5 @@ async def create_web_app(handler: OptimizationHandler, queue: OptimizationQueue,
         logger.warning("Requests encryption is disabled")
 
     app.middlewares.append(middlewares.hide_server_headers)
-
-    if service and systemd.is_available():
-
-        async def notify_systemd(*args):
-            return await systemd.notify_ready()
-
-        app.on_startup.append(notify_systemd)
-
     app.add_routes([web.post('/', routes.optimize)])
     return app
