@@ -4,7 +4,7 @@ import os
 from setuptools import setup, find_packages
 
 DESCRIPTION = (
-    "On-demand and/or auto performance optimizer for Linux applications."
+    "On-demand and auto performance optimizer for Linux applications."
 )
 
 AUTHOR = "Vinícius Moreira"
