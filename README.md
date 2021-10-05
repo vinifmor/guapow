@@ -1,4 +1,4 @@
-**guapow** is an on-demand and/or auto performance optimizer for Linux applications. The project name is an abbreviation for **Guarana powder** (_Guaraná_ is a fruit from the Amazon rainforest with a highly caffeinated seed).
+**guapow** is an on-demand and auto performance optimizer for Linux applications. The project name is an abbreviation for **Guarana powder** (_Guaraná_ is a fruit from the Amazon rainforest with a highly caffeinated seed).
 
 **Key features**
 
