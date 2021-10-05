@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from unittest import TestCase
 from unittest.mock import Mock, patch, call
@@ -46,15 +47,21 @@ class InstallOptimizerTest(TestCase):
         is_root.assert_called_once()
         which.assert_called_once_with('systemctl')
 
+    @patch(f'{__app_name__}.cli.commands.service.shutil.which', side_effect=['sysctl', None])
+    @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=True)
+    def test_run__must_return_false_when_service_command_is_not_installed(self, is_root: Mock, which: Mock):
+        self.assertFalse(self.cmd.run(Mock()))
+        is_root.assert_called_once()
+        which.assert_has_calls([call('systemctl'), call(f'{__app_name__}-opt')])
+
     @patch(f'{__app_name__}.cli.commands.service.system.syscall', return_value=(0, ' loaded (/file.service; enabled; xpto)'))
     @patch(f'{__app_name__}.cli.commands.service.os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.cli.commands.service.shutil.which', return_value=True)
+    @patch(f'{__app_name__}.cli.commands.service.shutil.which', side_effect=['sysctl', f'/bin/{__app_name__}-opt'])
     @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=True)
     def test_run__must_return_true_and_not_call_systemctl_enable_when_already_enabled(self, is_root: Mock, which: Mock, exists: Mock, syscall: Mock):
-
         self.assertTrue(self.cmd.run(Mock()))
         is_root.assert_called_once()
-        which.assert_called_once_with('systemctl')
+        which.assert_has_calls([call('systemctl'), call(f'{__app_name__}-opt')])
         exists.assert_called_once_with(f'/usr/lib/systemd/system/{OPTIMIZER_SERVICE_FILE}')
 
         syscall.assert_called_once_with(f'systemctl status {OPTIMIZER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV)
@@ -62,12 +69,12 @@ class InstallOptimizerTest(TestCase):
     @patch(f'{__app_name__}.cli.commands.service.system.syscall', side_effect=[(0, ' loaded (/file.service; disabled; xpto)'),
                                                                                (0, '')])
     @patch(f'{__app_name__}.cli.commands.service.os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.cli.commands.service.shutil.which', return_value=True)
+    @patch(f'{__app_name__}.cli.commands.service.shutil.which', side_effect=['sysctl', f'/bin/{__app_name__}-opt'])
     @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=True)
     def test_run__must_return_true_and_call_systemctl_enable_when_not_enabled(self, is_root: Mock, which: Mock, exists: Mock, syscall: Mock):
         self.assertTrue(self.cmd.run(Mock()))
         is_root.assert_called_once()
-        which.assert_called_once_with('systemctl')
+        which.assert_called()
         exists.assert_called_once_with(f'/usr/lib/systemd/system/{OPTIMIZER_SERVICE_FILE}')
 
         syscall.assert_has_calls([call(f'systemctl status {OPTIMIZER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV),
@@ -76,15 +83,22 @@ class InstallOptimizerTest(TestCase):
     @patch(f'{__app_name__}.cli.commands.service.system.syscall', side_effect=[(0, ' loaded (/file.service; disabled; xpto)'),
                                                                                (0, '')])
     @patch(f'{__app_name__}.cli.commands.service.get_systemd_root_service_dir', return_value=MOCKED_SYSTEMD_DIR)
-    @patch(f'{__app_name__}.cli.commands.service.shutil.which', return_value=True)
+    @patch(f'{__app_name__}.cli.commands.service.shutil.which', side_effect=['sysctl', f'/bin/test/{__app_name__}-opt'])
     @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=True)
     def test_run__must_return_true_after_copying_service_file_and_calling_systemctl_enable(self, is_root: Mock, which: Mock, get_systemd_root_service_dir: Mock, syscall: Mock):
         self.assertTrue(self.cmd.run(Mock()))
 
-        self.assertTrue(os.path.exists(f'{MOCKED_SYSTEMD_DIR}/{OPTIMIZER_SERVICE_FILE}'))
+        exp_service_file = f'{MOCKED_SYSTEMD_DIR}/{OPTIMIZER_SERVICE_FILE}'
+        self.assertTrue(os.path.exists(exp_service_file))
+
+        with open(exp_service_file) as f:
+            service_definition = f.read()
+
+        service_cmd = re.compile(f'ExecStart=(.+)\n').findall(service_definition)
+        self.assertEqual([f'/bin/test/{__app_name__}-opt'], service_cmd)
 
         is_root.assert_called_once()
-        which.assert_called_once_with('systemctl')
+        which.assert_called()
         get_systemd_root_service_dir.assert_called_once()
 
         syscall.assert_has_calls([call(f'systemctl status {OPTIMIZER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV),

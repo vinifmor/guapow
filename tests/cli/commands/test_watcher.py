@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from unittest import TestCase
 from unittest.mock import Mock, patch, call
@@ -38,15 +39,22 @@ class InstallWatcherTest(TestCase):
            side_effect=[(0, ' loaded (/file.service; disabled; xpto)'),
                         (0, '')])
     @patch(f'{__app_name__}.cli.commands.service.get_systemd_user_service_dir', return_value=MOCKED_SYSTEMD_DIR)
-    @patch(f'{__app_name__}.cli.commands.service.shutil.which', return_value=True)
+    @patch(f'{__app_name__}.cli.commands.service.shutil.which', side_effect=['sysctl', f'/bin/test/{__app_name__}-watch'])
     @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=False)
     def test_run__must_be_able_to_install_at_user_level(self, is_root: Mock, which: Mock, get_systemd_user_service_dir: Mock, syscall: Mock):
         self.assertTrue(self.cmd.run(Mock()))
 
-        self.assertTrue(os.path.exists(f'{MOCKED_SYSTEMD_DIR}/{WATCHER_SERVICE_FILE}'))
+        exp_service_file = f'{MOCKED_SYSTEMD_DIR}/{WATCHER_SERVICE_FILE}'
+        self.assertTrue(os.path.exists(exp_service_file))
+
+        with open(exp_service_file) as f:
+            service_definition = f.read()
+
+        service_cmd = re.compile(f'ExecStart=(.+)\n').findall(service_definition)
+        self.assertEqual([f'/bin/test/{__app_name__}-watch'], service_cmd)
 
         is_root.assert_called_once()
-        which.assert_called_once_with('systemctl')
+        which.assert_has_calls([call('systemctl'), call(f'{__app_name__}-watch')])
         get_systemd_user_service_dir.assert_called_once()
 
         syscall.assert_has_calls([call(f'systemctl status --user {WATCHER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV),

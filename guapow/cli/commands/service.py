@@ -51,7 +51,8 @@ def disable_service(file_name: str, root: bool, env: Dict[str, str]) -> Tuple[in
 
 class ServiceInstaller:
 
-    def __init__(self, service_file: str, requires_root: bool, logger: Logger):
+    def __init__(self, service_cmd: str, service_file: str, requires_root: bool, logger: Logger):
+        self._service_cmd = service_cmd
         self._service_file = service_file
         self._requires_root = requires_root
         self._log = logger
@@ -67,6 +68,12 @@ class ServiceInstaller:
             self._log.error("'systemctl' is not installed on your system")
             return False
 
+        service_cmd = shutil.which(self._service_cmd)
+
+        if not service_cmd:
+            self._log.error(f"'{self._service_cmd}' is not installed on your system")
+            return False
+
         service_dir = get_service_dir(root)
         dest_file = f'{service_dir}/{self._service_file}'
 
@@ -78,8 +85,21 @@ class ServiceInstaller:
                 return False
 
             local_file = get_source_service_path(self._service_file, root)
+
+            if not os.path.exists(local_file):
+                self._log.error(f"Service definition file '{local_file}' not found")
+                return False
+
+            with open(local_file) as f:
+                service_definition = f.read()
+
+            replace_pattern = re.compile(r'ExecStart=.+\n')
+            service_definition = replace_pattern.sub(f'ExecStart={service_cmd}\n', service_definition)
+
             try:
-                shutil.copy(local_file, dest_file)
+                with open(dest_file, 'w+') as f:
+                    f.write(service_definition)
+                    
                 self._log.info(f"File '{local_file}' copied to '{dest_file}'")
             except OSError:
                 self._log.error(f"Could not copy service file '{local_file}' to '{service_dir}'")

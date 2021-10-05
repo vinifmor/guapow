@@ -14,7 +14,10 @@ class InstallWatcher(CLICommand):
 
     def __init__(self, logger: Logger):
         super(InstallWatcher, self).__init__(logger)
-        self._installer = ServiceInstaller(service_file=WATCHER_SERVICE_FILE, requires_root=False, logger=logger)
+        self._installer = ServiceInstaller(service_cmd=WATCHER_SERVICE_FILE.split('.service')[0],
+                                           service_file=WATCHER_SERVICE_FILE, 
+                                           requires_root=False,
+                                           logger=logger)
 
     def add(self, commands: object):
         commands.add_parser(self.CMD, help="It installs and enables the watcher service (root or user level) [requires 'systemd' and 'systemctl' installed]")

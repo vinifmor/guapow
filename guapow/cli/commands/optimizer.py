@@ -14,7 +14,10 @@ class InstallOptimizer(CLICommand):
 
     def __init__(self, logger: Logger):
         super(InstallOptimizer, self).__init__(logger)
-        self._installer = ServiceInstaller(service_file=OPTIMIZER_SERVICE_FILE, requires_root=True, logger=logger)
+        self._installer = ServiceInstaller(service_cmd=OPTIMIZER_SERVICE_FILE.split('.service')[0],
+                                           service_file=OPTIMIZER_SERVICE_FILE,
+                                           requires_root=True,
+                                           logger=logger)
 
     def add(self, commands: object):
         commands.add_parser(self.CMD, help="It installs and enables the optimizer service (root level) [requires 'systemd' and 'systemctl' installed]")
