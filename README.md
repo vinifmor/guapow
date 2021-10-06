@@ -182,9 +182,9 @@ makepkg -si
 #### <a name="opt_io">Changing application I/O niceness</a>
 - Every time your application needs to write or read something from the disk, it competes with other applications.
 - The applications I/O needs are split into classes. The supported classes are described below:
-    - `best_effort`: default class. Splited in 8 levels (from 0 to 7). Lower levels have higher priority (e.g: 0 > 1).
+    - `best_effort`: default class. Divided in 8 levels (from 0 to 7). Lower levels have higher priority (e.g: 0 > 1).
     - `idle`: for applications that should only perform I/O operations when no other application is doing so.
-    - `realtime`: first access to the disk. Splitted in 8 levels (like `best_effort`). Not allowed for non-root users.
+    - `realtime`: first access to the disk. Divided in 8 levels (like `best_effort`). Not allowed for non-root users.
 - This optimization requires the `ionice` command installed.
 - Property definition: 
     - `proc.io.class=class_name` (e.g: `proc.io.class=best_effort`)
