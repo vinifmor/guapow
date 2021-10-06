@@ -12,6 +12,7 @@
 - Changing GPU power mode (only **Nvidia** and **AMD** devices at the moment)
 - Custom scripting
 - Optimization profiles
+- Auto optimize all your Steam game library without having to edit Launch Options
 - And more...
 
 ## Index
