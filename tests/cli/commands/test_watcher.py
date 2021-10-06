@@ -1,17 +1,15 @@
 import os
 import re
 import shutil
+from typing import Dict
 from unittest import TestCase
 from unittest.mock import Mock, patch, call
 
 from guapow import __app_name__
 from guapow.cli.commands import InstallWatcher, UninstallWatcher, WATCHER_SERVICE_FILE
-from tests import RESOURCES_DIR
+from tests import RESOURCES_DIR, AnyInstance
 
 MOCKED_SYSTEMD_DIR = f'{RESOURCES_DIR}/mock_systemd'
-
-EXPECTED_CUSTOM_ENV = dict(os.environ)
-EXPECTED_CUSTOM_ENV['LANG'] = 'en_US.UTF-8'
 
 
 def remover_mocked_systemd_dir():
@@ -57,8 +55,12 @@ class InstallWatcherTest(TestCase):
         which.assert_has_calls([call('systemctl'), call(f'{__app_name__}-watch')])
         get_systemd_user_service_dir.assert_called_once()
 
-        syscall.assert_has_calls([call(f'systemctl status --user {WATCHER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV),
-                                  call(f'systemctl enable --user --now {WATCHER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV)])
+        syscall.assert_has_calls([call(f'systemctl status --user {WATCHER_SERVICE_FILE}', custom_env=AnyInstance(Dict)),
+                                  call(f'systemctl enable --user --now {WATCHER_SERVICE_FILE}', custom_env=AnyInstance(Dict))])
+
+        for mock_call in syscall.call_args.call_list():
+            self.assertGreater(len(mock_call.kwargs['custom_env']), 1)
+            self.assertEqual('en_US.UTF-8', mock_call.kwargs['custom_env'].get('LANG'))
 
 
 class UninstallWatcherTest(TestCase):
@@ -79,7 +81,11 @@ class UninstallWatcherTest(TestCase):
         self.assertTrue(self.cmd.run(Mock()))
         is_root.assert_called_once()
         which.assert_called_once_with('systemctl')
-        syscall.assert_has_calls([call(f'systemctl status --user {WATCHER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV),
-                                  call(f'systemctl disable --user --now {WATCHER_SERVICE_FILE}', custom_env=EXPECTED_CUSTOM_ENV)])
+        syscall.assert_has_calls([call(f'systemctl status --user {WATCHER_SERVICE_FILE}', custom_env=AnyInstance(Dict)),
+                                  call(f'systemctl disable --user --now {WATCHER_SERVICE_FILE}', custom_env=AnyInstance(Dict))])
         exists.assert_called_once_with('/file.service')
         remove.assert_called_once_with('/file.service')
+
+        for mock_call in syscall.call_args.call_list():
+            self.assertGreater(len(mock_call.kwargs['custom_env']), 1)
+            self.assertEqual('en_US.UTF-8', mock_call.kwargs['custom_env'].get('LANG'))
