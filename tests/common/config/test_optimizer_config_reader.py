@@ -12,6 +12,11 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
     def setUp(self):
         self.reader = OptimizerConfigReader(FileModelFiller(Mock()), Mock())
 
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if HTTP_SERVER_PORT in os.environ:
+            del os.environ[HTTP_SERVER_PORT]
+
     async def test_read_valid__return_valid_instance_when_no_existent_property_is_defined(self):
         file_path = f'{RESOURCES_DIR}/opt_no_property.conf'
         config = await self.reader.read_valid(file_path=file_path)
