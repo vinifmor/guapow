@@ -1,3 +1,6 @@
+# for a profile available only for a specific user: ~/.config/guapow/name.profile
+# for a profile available for all users: /etc/guapow/name.profile
+
 cpu.performance
 proc.io.class=best_effort  # best_effort, realtime, idle
 proc.io.nice=0
