@@ -72,7 +72,7 @@ class UninstallWatcherTest(TestCase):
     @patch(f'{__app_name__}.cli.commands.service.os.remove')
     @patch(f'{__app_name__}.cli.commands.service.os.path.exists', return_value=True)
     @patch(f'{__app_name__}.cli.commands.service.system.syscall', side_effect=[(0, ' loaded (/file.service; enabled; )'),
-                                                                                       (0, '')])
+                                                                               (0, '')])
     @patch(f'{__app_name__}.cli.commands.service.shutil.which', return_value='/bin')
     @patch(f'{__app_name__}.cli.commands.service.is_root_user', return_value=False)
     def test_run__must_be_able_to_uninstall_at_user_level(self, is_root: Mock, which: Mock, syscall: Mock, exists: Mock, remove: Mock):
