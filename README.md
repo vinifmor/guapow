@@ -257,7 +257,7 @@ makepkg -si
  - Property definition: 
     - `compositor.off` (equivalents: `compositor.off=true` or `compositor.off=1`)
  - The **optimizer** service will keep the **compositor** disabled until the optimized application finishes. It handles the state if two or more optimized applications require `compositor.off`. So if application A and B require `compositor.off` and A finishes after a while, the disabled state will be kept until B finishes.
- - The **optimizer** service will guess the installed compositor on the first request defining `compositor.off`. So the first request will take more time, then the subsequent ones. To prevent that, the installed compositor can be predefined on the **optimizer** service [settings](#opt_settings).
+ - The **optimizer** service tries to guess the installed compositor (requires `inxi` installed) on the first request defining `compositor.off`. So the first request will take more time, then the subsequent ones. To prevent that, the installed compositor can be predefined on the **optimizer** service [settings](#opt_settings).
  - <a name="opt_comp_nvidia">**Nvidia** compositor:</a>
     - available when **ForceCompositionPipeline** (or **ForceFullCompositionPipeline**) are defined on the X11 or user settings.
     - the **optimizer** service is not able to detect it by default, so you have to pre-define it through the **optimizer** service [settings](#opt_settings).
