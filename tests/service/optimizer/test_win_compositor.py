@@ -16,129 +16,156 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.expected_inxi_cmd = 'inxi -Gxx -c 0'
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 'compositor: xpto'))
-    async def test_return_none_when_inxi_returns_a_not_supported_compositor_name(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test_return_none_when_inxi_returns_a_not_supported_compositor_name(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
-        self.assertIsNone(compositor)
+        which.assert_called_once_with('inxi')
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
+        self.assertIsNone(compositor)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: kwin_x11 driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_kwin_when_inxi_returns_it_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_kwin_when_inxi_returns_it_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, KWinCompositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: xfwm4 driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_xfwm4_when_inxi_returns_it_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_xfwm4_when_inxi_returns_it_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, Xfwm4Compositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: metacity driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_marco_when_inxi_returns_metacity_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_marco_when_inxi_returns_metacity_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_once_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: marco driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_marco_when_inxi_returns_it_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_marco_when_inxi_returns_it_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_once_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: compton driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_picom_when_inxi_returns_compton_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_picom_when_inxi_returns_compton_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_once_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, PicomCompositor)
         self.assertEqual('Compton', compositor.get_name())
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: picom driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_picom_when_inxi_returns_it_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_picom_when_inxi_returns_it_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_once_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, PicomCompositor)
         self.assertEqual('Picom', compositor.get_name())
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: compiz driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
-    async def test__return_compiz_when_inxi_returns_it_as_compositor(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_compiz_when_inxi_returns_it_as_compositor(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_once_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, CompizCompositor)
         self.assertEqual('Compiz', compositor.get_name())
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
-    async def test__return_kwin_when_inxi_does_not_return_it_but_desktop_env_is_kde(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_kwin_when_inxi_does_not_return_it_but_desktop_env_is_kde(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'KDE'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, KWinCompositor)
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
-    async def test__return_marco_when_inxi_does_not_return_it_but_desktop_env_is_mate(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_marco_when_inxi_does_not_return_it_but_desktop_env_is_mate(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'Mate'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
-    async def test__return_xfwm4_when_inxi_does_not_return_it_but_desktop_env_is_xfce(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_xfwm4_when_inxi_does_not_return_it_but_desktop_env_is_xfce(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'XFCE'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
+        which.assert_called_with('inxi')
+        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, Xfwm4Compositor)
-        run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
-    async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_supported(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_supported(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'Gnome'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
-        self.assertIsNone(compositor)
+        which.assert_called_with('inxi')
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
+        self.assertIsNone(compositor)
 
     @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
-    async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_available(self, run_user_process: Mock):
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
+    async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_available(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
         compositor = await get_window_compositor(logger=Mock(), user_id=123, user_env=env)
-        self.assertIsNone(compositor)
+        which.assert_called_with('inxi')
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
+        self.assertIsNone(compositor)
 
 
 class GetWindowCompositorByNameTest(IsolatedAsyncioTestCase):
