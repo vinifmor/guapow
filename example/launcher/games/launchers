@@ -21,4 +21,6 @@ portal2.sh*=portal2_linux  # Portal 2 (native)
 StreetFighterV.exe=StreetFighterV.  # Street Fighter V
 HellbladeGame.exe=HellbladeGame-W  # Hellblade: Senua's Sacrifice
 SamuraiShodown.exe=SamuraiShodown-  # Samurai Shodown (2020)
+csgo.sh*=csgo_linux64  # CS Go (native)
+MeowMotors.exe=MeowMotors-Win6  # Meow Motors
 
