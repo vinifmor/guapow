@@ -390,7 +390,7 @@ makepkg -si
         launcher=def:def-bin   # this would map the executable 'def' to an application named 'def-bin'. So 'def-bin' would be optimized instead of 'def'
     ```
     
-    - b) Providing all mapping through the `launchers` file located in `~/.config/guapow` (for non-root users) or `/etc/guapow` (for global or root usage) following the pattern `exe_name=name_or_command`. The advantage of this approach is that you don't have to provide a per-profile/configuration mapping. But at the same time, tons of mappings will impact the matching process time. Example:
+    - b) Providing all mapping through the `launchers` file located in `~/.config/guapow` (for non-root users) or `/etc/guapow` (for global or root usage) following the pattern `exe_name=name_or_command`. The advantage of this approach is that you don't have to provide a per-profile/configuration mapping. But at the same time, tons of mappings **may** impact the matching process time. Example:
     ```
     abc=abc-full
     def=def-bin
