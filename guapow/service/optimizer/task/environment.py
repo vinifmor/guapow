@@ -220,3 +220,61 @@ class RunPostLaunchScripts(EnvironmentTask):
 
         if started_pids:
             process.related_pids.update(started_pids)
+
+
+class ChangeCPUEnergyPolicyLevel(EnvironmentTask):
+
+    def __init__(self, context: OptimizationContext):
+        super(ChangeCPUEnergyPolicyLevel, self).__init__(context)
+        self._man = context.cpuenergy_man
+        self._log = context.logger
+
+    async def is_available(self) -> Tuple[bool, Optional[str]]:
+        return self._man.can_work()
+
+    async def should_run(self, process: OptimizedProcess) -> bool:
+        return bool(process.profile.cpu and process.profile.cpu.performance)
+
+    def is_allowed_for_self_requests(self) -> bool:
+        return True
+
+    async def run(self, process: OptimizedProcess):
+        async with self._man.lock():
+            current_cpu_states = await self._man.map_current_state()
+
+            if not current_cpu_states:
+                self._log.error("Could not determine the current CPUs energy policy level")
+                return
+
+            not_in_performance = {i: state for i, state in current_cpu_states.items()
+                                  if state != self._man.LEVEL_PERFORMANCE}
+
+            if not not_in_performance:
+                process.cpu_energy_policy_changed = bool(self._man.saved_state)
+                return
+
+            cpus_changed_state = await self._man.change_states({i: self._man.LEVEL_PERFORMANCE
+                                                                for i in not_in_performance})
+            cpus_changed, cpus_not_changed = [], []
+
+            for idx, changed in cpus_changed_state.items():
+                if changed:
+                    cpus_changed.append(idx)
+                else:
+                    cpus_not_changed.append(idx)
+
+            if cpus_not_changed:
+                self._log.error(f"Could not change the energy policy level to full performance "
+                                f"({self._man.LEVEL_PERFORMANCE}) for the following CPUs: "
+                                f"{', '.join(str(i) for i in sorted(cpus_not_changed))}")
+
+            if cpus_changed:
+                cpus_changed.sort()
+                self._log.info(f"Energy policy level changed to full performance ({self._man.LEVEL_PERFORMANCE}) "
+                               f"for the following CPUs: {', '.join(str(i) for i in sorted(cpus_changed))}")
+
+                if not process.request.is_self_request:
+                    state_to_save = {idx: current_cpu_states[idx] for idx in cpus_changed}
+                    self._log.debug(f"Previous CPUs energy policy levels state saved: {state_to_save}")
+                    self._man.save_state(state_to_save)
+                    process.cpu_energy_policy_changed = True

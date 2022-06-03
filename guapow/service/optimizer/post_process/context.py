@@ -18,7 +18,8 @@ class PostProcessContext:
                  restore_compositor: Optional[bool],
                  stopped_processes: Optional[List[Tuple[str, Optional[str]]]],
                  not_stopped_processes: Optional[Set[str]],
-                 restore_mouse_cursor: Optional[bool]):
+                 restore_mouse_cursor: Optional[bool],
+                 restore_cpu_energy_policy: Optional[bool]):
         self.restorable_cpus = restorable_cpus
         self.restorable_gpus = restorable_gpus
         self.pids_to_stop = pids_to_stop
@@ -29,12 +30,14 @@ class PostProcessContext:
         self.stopped_processes = stopped_processes
         self.not_stopped_processes = not_stopped_processes
         self.restore_mouse_cursor = restore_mouse_cursor
+        self.restore_cpu_energy_policy = restore_cpu_energy_policy
 
     @classmethod
     def empty(cls):
         return cls(restorable_cpus=None, restorable_gpus=None, pids_to_stop=None,
                    scripts=None, user_env=None, user_id=None, restore_compositor=None,
-                   stopped_processes=None, restore_mouse_cursor=None, not_stopped_processes=None)
+                   stopped_processes=None, restore_mouse_cursor=None, not_stopped_processes=None,
+                   restore_cpu_energy_policy=None)
 
 
 class PostContextFiller(ABC):
@@ -44,11 +47,17 @@ class PostContextFiller(ABC):
         pass
 
 
-class RestorableCPUsFiller(PostContextFiller):
+class RestorableCPUGovernorsFiller(PostContextFiller):
 
     def fill(self, context: PostProcessContext, summary: PostProcessSummary):
         if not summary.cpus_in_use and summary.previous_cpus_states:
             context.restorable_cpus = summary.previous_cpus_states
+
+
+class RestorableCPUEnergyPolicyLevelFiller(PostContextFiller):
+
+    def fill(self, context: PostProcessContext, summary: PostProcessSummary):
+        context.restore_cpu_energy_policy = not summary.keep_cpu_energy_policy and summary.restore_cpu_energy_policy
 
 
 class RestorableGPUsFiller(PostContextFiller):

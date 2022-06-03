@@ -4,7 +4,7 @@ from guapow.common.dto import OptimizationRequest
 from guapow.common.model import ScriptSettings
 from guapow.service.optimizer.gpu import AMDGPUDriver, GPUState, GPUPowerMode
 from guapow.service.optimizer.task.model import OptimizedProcess, CPUState
-from guapow.service.optimizer.profile import OptimizationProfile, CompositorSettings
+from guapow.service.optimizer.profile import OptimizationProfile, CompositorSettings, CPUSettings
 
 
 class OptimizedProcessTest(TestCase):
@@ -80,6 +80,10 @@ class OptimizedProcessTest(TestCase):
 
     def test_should_be_watched__true_when_processes_stopped_after_launch_are_defined(self):
         self.proc.stopped_after_launch = {'a'}
+        self.assertTrue(self.proc.should_be_watched())
+
+    def test_should_be_watched__true_when_cpu_energy_policy_changed(self):
+        self.proc.cpu_energy_policy_changed = True
         self.assertTrue(self.proc.should_be_watched())
 
     def get_display__must_return_zero_when_no_user_env_is_defined(self):

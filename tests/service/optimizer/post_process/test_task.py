@@ -8,7 +8,8 @@ from guapow import __app_name__
 from guapow.common.model import ScriptSettings
 from guapow.service.optimizer.post_process.task import PostStopProcesses, PostProcessContext, RunFinishScripts, \
     ReEnableWindowCompositor, \
-    PostProcessTaskManager, RestoreCPUState, RestoreGPUState, RelaunchStoppedProcesses, RestoreMouseCursor
+    PostProcessTaskManager, RestoreCPUGovernor, RestoreGPUState, RelaunchStoppedProcesses, RestoreMouseCursor, \
+    RestoreCPUEnergyPolicyLevel
 from guapow.service.optimizer.task.model import OptimizationContext
 from tests.mocks import WindowCompositorMock
 
@@ -386,6 +387,45 @@ class RestoreMouseCursorTest(IsolatedAsyncioTestCase):
         self.context.mouse_man.show_cursor.assert_called_once()
 
 
+class RestoreCPUEnergyPolicyLevelTest(IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        self.context = OptimizationContext.empty()
+        self.context.cpuenergy_man = Mock()
+        self.context.cpuenergy_man.lock = MagicMock(return_value=Lock())
+        self.context.cpuenergy_man.change_states = AsyncMock()
+        self.context.cpuenergy_man.clear_state = MagicMock()
+        self.context.logger = Mock()
+        self.task = RestoreCPUEnergyPolicyLevel(self.context)
+
+    def test_should_run__true_when_restore_cpu_energy_policy_is_set_to_true(self):
+        context = PostProcessContext.empty()
+        context.restore_cpu_energy_policy = True
+        self.assertTrue(self.task.should_run(context))
+
+    def test_should_run__false_when_restore_cpu_energy_policy_is_not_defined(self):
+        context = PostProcessContext.empty()
+        self.assertFalse(self.task.should_run(context))
+
+    async def test_run__must_not_call_manager_change_state_if_saved_state_is_empty(self):
+        self.context.cpuenergy_man.saved_state = dict()
+
+        await self.task.run(PostProcessContext.empty())
+
+        self.context.cpuenergy_man.change_states.assert_not_awaited()
+        self.context.cpuenergy_man.clear_state.assert_not_called()
+
+    async def test_run__must_not_call_clear_state_for_cpus_which_energy_policy_restoring_failed(self):
+        saved_stated = {0: 3, 1: 2, 2: 5, 3: 6}
+        self.context.cpuenergy_man.saved_state = saved_stated
+        self.context.cpuenergy_man.change_states.return_value = {0: False, 1: True, 2: False, 3: True}
+
+        await self.task.run(PostProcessContext.empty())
+
+        self.context.cpuenergy_man.change_states.assert_awaited_once_with(saved_stated)
+        self.context.cpuenergy_man.clear_state.assert_called_once_with(1, 3)
+
+
 class PostProcessTaskManagerTest(TestCase):
 
     def setUp(self):
@@ -393,11 +433,12 @@ class PostProcessTaskManagerTest(TestCase):
 
     def test_get_available_tasks__should_returned_sorted_tasks(self):
         tasks = self.man.get_available_tasks()
-        self.assertEqual(7, len(tasks))
+        self.assertEqual(8, len(tasks))
         self.assertIsInstance(tasks[0], ReEnableWindowCompositor)
         self.assertIsInstance(tasks[1], PostStopProcesses)
         self.assertIsInstance(tasks[2], RestoreMouseCursor)
         self.assertIsInstance(tasks[3], RestoreGPUState)
-        self.assertIsInstance(tasks[4], RestoreCPUState)
-        self.assertIsInstance(tasks[5], RelaunchStoppedProcesses)
-        self.assertIsInstance(tasks[6], RunFinishScripts)
+        self.assertIsInstance(tasks[4], RestoreCPUGovernor)
+        self.assertIsInstance(tasks[5], RestoreCPUEnergyPolicyLevel)
+        self.assertIsInstance(tasks[6], RelaunchStoppedProcesses)
+        self.assertIsInstance(tasks[7], RunFinishScripts)

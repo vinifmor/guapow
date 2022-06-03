@@ -14,7 +14,8 @@ class PostProcessSummary:
                  post_scripts: Optional[Dict[float, ScriptSettings]], keep_compositor_disabled: Optional[bool], cpus_in_use: Optional[bool],
                  gpus_in_use: Optional[Dict[Type[GPUDriver], Set[int]]], processes_not_relaunch: Optional[Set[str]],
                  processes_to_relaunch: Optional[Dict[str, str]], dead_pids: Optional[Set[Tuple[int, int]]], restore_mouse_cursor: Optional[bool],
-                 keep_mouse_hidden: Optional[bool]):
+                 keep_mouse_hidden: Optional[bool], keep_cpu_energy_policy: Optional[bool],
+                 restore_cpu_energy_policy: Optional[bool]):
         self.pids_alive = pids_alive
         self.user_id = user_id
         self.user_env = user_env
@@ -32,13 +33,16 @@ class PostProcessSummary:
         self.dead_pids = dead_pids
         self.restore_mouse_cursor = restore_mouse_cursor
         self.keep_mouse_hidden = keep_mouse_hidden
+        self.keep_cpu_energy_policy = keep_cpu_energy_policy
+        self.restore_cpu_energy_policy = restore_cpu_energy_policy
 
     @classmethod
     def empyt(cls) -> "PostProcessSummary":
-        return cls(pids_alive=None, user_id=None, user_env=None, restore_compositor=None, previous_cpu_states=None, cpus_in_use=None,
-                   previous_gpus_states=None, pids_to_stop=None, processes_relaunch_by_time=None, post_scripts=None, gpus_in_use=None,
-                   keep_compositor_disabled=None, processes_not_relaunch=None, processes_to_relaunch=None, dead_pids=None,
-                   keep_mouse_hidden=None, restore_mouse_cursor=None)
+        return cls(pids_alive=None, user_id=None, user_env=None, restore_compositor=None, previous_cpu_states=None,
+                   cpus_in_use=None, previous_gpus_states=None, pids_to_stop=None, processes_relaunch_by_time=None,
+                   post_scripts=None, gpus_in_use=None, keep_compositor_disabled=None, processes_not_relaunch=None,
+                   processes_to_relaunch=None, dead_pids=None, keep_mouse_hidden=None, restore_mouse_cursor=None,
+                   keep_cpu_energy_policy=None, restore_cpu_energy_policy=None)
 
 
 class PostProcessSummarizer(ABC):
@@ -95,7 +99,7 @@ class CompositorStateSummarizer(PostProcessSummarizer):
                 summary.restore_compositor = True
 
 
-class CPUStateSummarizer(PostProcessSummarizer):
+class CPUGovernorStateSummarizer(PostProcessSummarizer):
 
     async def fill(self, summary: PostProcessSummary, process: OptimizedProcess, main_context: OptimizationContext):
         if process.previous_cpu_state:
@@ -106,6 +110,16 @@ class CPUStateSummarizer(PostProcessSummarizer):
                     summary.previous_cpus_states = []
 
                 summary.previous_cpus_states.append(process.previous_cpu_state)
+
+
+class CPUEnergyPolicyLevelSummarizer(PostProcessSummarizer):
+
+    async def fill(self, summary: PostProcessSummary, process: OptimizedProcess, main_context: OptimizationContext):
+        if process.cpu_energy_policy_changed:
+            if process.alive:
+                summary.keep_cpu_energy_policy = True
+            else:
+                summary.restore_cpu_energy_policy = True
 
 
 class GPUStateSummarizer(PostProcessSummarizer):
@@ -177,9 +191,10 @@ class GeneralPostProcessSummarizer(PostProcessSummarizer):
         ProcessesToStopSummarizer: 2,
         CompositorStateSummarizer: 3,
         FinishScriptsSummarizer: 4,
-        CPUStateSummarizer: 5,
-        GPUStateSummarizer: 6,
-        ProcessesToRelaunchSummarizer: 7
+        CPUGovernorStateSummarizer: 5,
+        CPUEnergyPolicyLevelSummarizer: 6,
+        GPUStateSummarizer: 7,
+        ProcessesToRelaunchSummarizer: 8
     }
 
     __instance = None

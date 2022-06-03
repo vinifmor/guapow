@@ -2,7 +2,7 @@ import os
 import re
 import sys
 import traceback
-from asyncio import Future
+from asyncio import Future, Lock
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import Mock, patch, MagicMock, AsyncMock, PropertyMock
 
@@ -13,9 +13,18 @@ from guapow.common.profile import StopProcessSettings
 from guapow.service.optimizer.cpu import CPUFrequencyManager
 from guapow.service.optimizer.profile import OptimizationProfile, CPUSettings, GPUSettings, CompositorSettings
 from guapow.service.optimizer.task.environment import ChangeCPUFrequencyGovernor, ChangeGPUModeToPerformance, \
-    DisableWindowCompositor, HideMouseCursor, StopProcessesAfterLaunch, RunPostLaunchScripts
+    DisableWindowCompositor, HideMouseCursor, StopProcessesAfterLaunch, RunPostLaunchScripts, ChangeCPUEnergyPolicyLevel
 from guapow.service.optimizer.task.model import OptimizationContext, OptimizedProcess, CPUState
 from tests import RESOURCES_DIR, AsyncIterator
+
+
+def remove_file(file_path: str):
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except:
+            sys.stderr.write(f"Could not remove test file '{file_path}'\n")
+            traceback.print_exc()
 
 
 class ChangeCPUFrequencyGovernorTest(IsolatedAsyncioTestCase):
@@ -28,19 +37,11 @@ class ChangeCPUFrequencyGovernorTest(IsolatedAsyncioTestCase):
         self.request = OptimizationRequest(pid=123, command='abc', profile='user', user_name='user')
         self.profile = OptimizationProfile.empty('test')
         self.profile.cpu = CPUSettings(performance=None)
-        self.process= OptimizedProcess(request=self.request, profile=self.profile, created_at=1)
+        self.process = OptimizedProcess(request=self.request, profile=self.profile, created_at=1)
 
     def tearDown(self):
         for idx in range(2):
-            self.remove_file(self.TEMP_GOV_FILE_PATTERN.format(idx))
-
-    def remove_file(self, file_path: str):
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except:
-                sys.stderr.write(f"Could not remove test file '{file_path}'\n")
-                traceback.print_exc()
+            remove_file(self.TEMP_GOV_FILE_PATTERN.format(idx))
 
     async def test_is_available__false_when_not_cpu_is_available(self):
         self.context.cpu_count = 0
@@ -561,3 +562,116 @@ class RunPostLaunchScriptsTest(IsolatedAsyncioTestCase):
 
         self.task._task.run.assert_awaited_once_with(scripts=[self.profile.after_scripts], user_id=user_id, user_env=user_env)
         self.assertEqual({1, 4, 10, 111}, proc.related_pids)  # additional started pids
+
+
+class ChangeCPUEnergyPolicyLevelTest(IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        self.context = OptimizationContext.empty()
+        self.context.logger = Mock()
+        self.context.cpuenergy_man = Mock()
+        self.context.cpuenergy_man.LEVEL_PERFORMANCE = 0
+        self.context.cpuenergy_man.lock = MagicMock(return_value=Lock())
+        self.context.cpuenergy_man.change_states = AsyncMock(return_value=None)
+        self.context.cpu_count = 1
+        self.request = OptimizationRequest(pid=123, command='abc', profile='user', user_name='user')
+        self.profile = OptimizationProfile.empty('test')
+        self.profile.cpu = CPUSettings(performance=None)
+        self.process = OptimizedProcess(request=self.request, profile=self.profile, created_at=1)
+        self.task = ChangeCPUEnergyPolicyLevel(self.context)
+
+    def is_allowed_for_self_requests__always_true(self):
+        self.assertTrue(self.task.is_allowed_for_self_requests())
+
+    async def should_run__false_when_no_cpu_settings(self):
+        self.profile.cpu = None
+        self.assertFalse(await self.task.should_run(self.process))
+
+    async def should_run__false_when_cpu_settings_not_performance(self):
+        self.profile.cpu.performance = False
+        self.assertFalse(await self.task.should_run(self.process))
+
+    async def should_run__true_when_cpu_settings_in_performance(self):
+        self.profile.cpu.performance = True
+        self.assertTrue(await self.task.should_run(self.process))
+
+    async def test_is_available__must_delegate_call(self):
+        self.context.cpu_count = 0
+        self.context.cpuenergy_man.can_work = MagicMock(return_value=(True, None))
+
+        available, msg = await self.task.is_available()
+        self.context.cpuenergy_man.can_work.assert_called_once()
+        self.assertTrue(available)
+        self.assertIsNone(msg)
+
+    async def test_run__must_not_call_change_states_if_no_current_state_is_returned(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value=dict())
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_not_awaited()
+
+    async def test_run__must_not_call_change_states_if_all_current_policies_are_performance(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 0})
+        self.context.cpuenergy_man.saved_state = dict()
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_not_awaited()
+        self.context.cpuenergy_man.save_state.assert_not_called()
+        self.assertFalse(self.process.cpu_energy_policy_changed)  # false since there was no previous call
+
+    async def test_run__must_set_process_cpu_energy_policy_changed_if_a_saved_state_is_present(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 0})
+        self.context.cpuenergy_man.saved_state = {0: 0, 1: 0}
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_not_awaited()
+        self.context.cpuenergy_man.save_state.assert_not_called()
+        self.assertTrue(self.process.cpu_energy_policy_changed)  # true since there was a previous call
+
+    async def test_run__must_only_call_change_states_with_no_performance_policies(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 3, 2: 7})
+        self.context.cpuenergy_man.change_states = AsyncMock(return_value={1: True, 2: True})
+        self.context.cpuenergy_man.save_state = MagicMock()
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_awaited_once_with({1: 0, 2: 0})
+        self.context.cpuenergy_man.save_state.assert_called_once_with({1: 3, 2: 7})
+        self.assertTrue(self.process.cpu_energy_policy_changed)
+
+    async def test_run__must_not_call_save_for_self_requests(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 3, 2: 7})
+        self.context.cpuenergy_man.change_states = AsyncMock(return_value={1: True, 2: True})
+        self.context.cpuenergy_man.save_state = MagicMock()
+
+        self.request.pid, self.request.command, self.request.user_name = None, None, None
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_awaited_once_with({1: 0, 2: 0})
+        self.context.cpuenergy_man.save_state.assert_not_called()
+        self.assertFalse(self.process.cpu_energy_policy_changed)
+
+    async def test_run__must_not_call_save_state_if_the_policies_could_not_be_changed(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 3, 2: 7})
+        self.context.cpuenergy_man.change_states = AsyncMock(return_value={1: False, 2: False})
+        self.context.cpuenergy_man.save_state = MagicMock()
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_awaited_once_with({1: 0, 2: 0})
+        self.context.cpuenergy_man.save_state.assert_not_called()
+        self.assertFalse(self.process.cpu_energy_policy_changed)
+
+    async def test_run__must_call_save_state_if_at_least_one_policy_changed(self):
+        self.context.cpuenergy_man.map_current_state = AsyncMock(return_value={0: 0, 1: 3, 2: 7})
+        self.context.cpuenergy_man.change_states = AsyncMock(return_value={1: False, 2: True})
+        self.context.cpuenergy_man.save_state = MagicMock()
+
+        await self.task.run(self.process)
+
+        self.context.cpuenergy_man.change_states.assert_awaited_once_with({1: 0, 2: 0})
+        self.context.cpuenergy_man.save_state.assert_called_once_with({2: 7})
+        self.assertTrue(self.process.cpu_energy_policy_changed)
