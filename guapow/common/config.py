@@ -84,7 +84,7 @@ class OptimizerConfig(RootFileModel):
 
     def __init__(self, port: Optional[int] = None, compositor: Optional[str] = None,
                  allow_root_scripts: Optional[bool] = False,
-                 check_finished_interval: Optional[int] = None, launcher_mapping_timeout: Optional[float] = 15,
+                 check_finished_interval: Optional[int] = None, launcher_mapping_timeout: Optional[float] = 30,
                  gpu_cache: Optional[bool] = False, cpu_performance: Optional[bool] = None,
                  profile_cache: Optional[bool] = None, pre_cache_profiles: Optional[bool] = None,
                  gpu_vendor: Optional[str] = None, renicer_interval: Optional[float] = None):
@@ -146,7 +146,7 @@ class OptimizerConfig(RootFileModel):
             self.check_finished_interval = 3
 
         if not self.has_valid_launcher_mapping_timeout():
-            self.launcher_mapping_timeout = 15
+            self.launcher_mapping_timeout = 30
 
         if self.gpu_cache is None:
             self.gpu_cache = False
