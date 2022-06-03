@@ -118,11 +118,12 @@ class CPUEnergyPolicyManager:
 
     def can_work(self) -> Tuple[bool, Optional[str]]:
         if not self._cpus or self._cpus < 0:
-            return False, 'No CPU detected'
+            return False, 'It will not be possible to change the CPU energy policy level: no CPU detected'
 
         file_path = self._file_pattern.format(idx='0')
         if not os.path.exists(file_path):
-            return False, f'Not possible to change the CPU energy policy level. File not found: {file_path}'
+            return False, f"It will not be possible to change the CPU energy policy level: " \
+                          f"file '{file_path})' not found"
 
         return True, None
 
