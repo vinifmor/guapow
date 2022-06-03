@@ -123,7 +123,7 @@ class CPUEnergyPolicyManager:
         file_path = self._file_pattern.format(idx='0')
         if not os.path.exists(file_path):
             return False, f"It will not be possible to change the CPU energy policy level: " \
-                          f"file '{file_path})' not found"
+                          f"file '{file_path}' not found"
 
         return True, None
 
