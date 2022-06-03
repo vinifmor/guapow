@@ -3,7 +3,7 @@ from typing import Optional, List, Awaitable, Type, Dict
 
 from guapow.service.optimizer.task.environment import EnvironmentTask, DisableWindowCompositor, \
     ChangeCPUFrequencyGovernor, ChangeGPUModeToPerformance, HideMouseCursor, StopProcessesAfterLaunch, \
-    RunPostLaunchScripts
+    RunPostLaunchScripts, ChangeCPUEnergyPolicyLevel
 from guapow.service.optimizer.task.model import OptimizationContext, Task, OptimizedProcess
 from guapow.service.optimizer.task.process import ProcessTask, ReniceProcess, ChangeCPUAffinity, \
     ChangeCPUScalingPolicy, ChangeProcessIOClass
@@ -27,7 +27,8 @@ class TasksManager:
             DisableWindowCompositor: 2,
             HideMouseCursor: 3,
             ChangeCPUFrequencyGovernor: 4,
-            ChangeGPUModeToPerformance: 5
+            ChangeCPUEnergyPolicyLevel: 5,
+            ChangeGPUModeToPerformance: 6
         }
         self._proc_order: Dict[Type[ProcessTask, int]] = {
             ReniceProcess: 0,

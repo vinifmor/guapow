@@ -5,8 +5,9 @@ from guapow.common.dto import OptimizationRequest
 from guapow.common.profile import StopProcessSettings
 from guapow.service.optimizer.post_process.summary import GeneralPostProcessSummarizer, UserIdSummarizer, \
     UserEnvironmentSummarizer, ProcessesToStopSummarizer, CompositorStateSummarizer, FinishScriptsSummarizer, \
-    CPUStateSummarizer, GPUStateSummarizer, ProcessesToRelaunchSummarizer, MouseCursorStateSummarizer
-from guapow.service.optimizer.profile import OptimizationProfile, CompositorSettings
+    CPUGovernorStateSummarizer, GPUStateSummarizer, ProcessesToRelaunchSummarizer, MouseCursorStateSummarizer, \
+    CPUEnergyPolicyLevelSummarizer
+from guapow.service.optimizer.profile import OptimizationProfile, CompositorSettings, CPUSettings
 from guapow.service.optimizer.task.model import OptimizedProcess, OptimizationContext
 
 
@@ -20,8 +21,9 @@ class GeneralPostProcessSummarizerTest(IsolatedAsyncioTestCase):
         fillers = GeneralPostProcessSummarizer.instance().get_fillers()
         self.assertIsNotNone(fillers)
 
-        expected_fillers = [UserIdSummarizer, UserEnvironmentSummarizer, ProcessesToStopSummarizer, CompositorStateSummarizer,
-                            FinishScriptsSummarizer, CPUStateSummarizer, GPUStateSummarizer, ProcessesToRelaunchSummarizer,
+        expected_fillers = [UserIdSummarizer, UserEnvironmentSummarizer, ProcessesToStopSummarizer,
+                            CompositorStateSummarizer, FinishScriptsSummarizer, CPUGovernorStateSummarizer,
+                            CPUEnergyPolicyLevelSummarizer, GPUStateSummarizer, ProcessesToRelaunchSummarizer,
                             MouseCursorStateSummarizer]
 
         self.assertEqual(len(expected_fillers), len(fillers))
@@ -187,3 +189,51 @@ class GeneralPostProcessSummarizerTest(IsolatedAsyncioTestCase):
         pre_context = await GeneralPostProcessSummarizer.instance().summarize(processes=procs, pids_alive=set(), processes_to_relaunch={'a': None}, context=context)
 
         self.assertEqual({'a': None}, pre_context.processes_to_relaunch)
+
+    async def test_summarize__must_set_keep_and_restore_cpu_energy_policy_to_true_if_processes_alive_and_dead(self):
+        context = OptimizationContext.empty()
+        profile = OptimizationProfile.empty('test')
+
+        procs = [OptimizedProcess(request=OptimizationRequest(pid=1, command='/bin', user_name='/call_1'), created_at=1,
+                                  profile=profile, cpu_energy_policy_changed=True),
+                 OptimizedProcess(request=OptimizationRequest(pid=2, command='/bin', user_name='/call_2'), created_at=2,
+                                  profile=profile, cpu_energy_policy_changed=True)]
+
+        pre_context = await GeneralPostProcessSummarizer.instance().summarize(processes=procs, pids_alive={2},
+                                                                              processes_to_relaunch=None,
+                                                                              context=context)
+
+        self.assertTrue(pre_context.keep_cpu_energy_policy)
+        self.assertTrue(pre_context.restore_cpu_energy_policy)
+
+    async def test_summarize__must_not_set_keep_cpu_energy_policy_to_true_if_no_process_alive(self):
+        context = OptimizationContext.empty()
+        profile = OptimizationProfile.empty('test')
+
+        procs = [OptimizedProcess(request=OptimizationRequest(pid=1, command='/bin', user_name='/call_1'), created_at=1,
+                                  profile=profile, cpu_energy_policy_changed=True),
+                 OptimizedProcess(request=OptimizationRequest(pid=2, command='/bin', user_name='/call_2'), created_at=2,
+                                  profile=profile, cpu_energy_policy_changed=True)]
+
+        pre_context = await GeneralPostProcessSummarizer.instance().summarize(processes=procs, pids_alive=set(),
+                                                                              processes_to_relaunch=None,
+                                                                              context=context)
+
+        self.assertIsNone(pre_context.keep_cpu_energy_policy)
+        self.assertTrue(pre_context.restore_cpu_energy_policy)
+
+    async def test_summarize__must_not_set_restore_cpu_energy_policy_to_true_if_all_processes_alive(self):
+        context = OptimizationContext.empty()
+        profile = OptimizationProfile.empty('test')
+
+        procs = [OptimizedProcess(request=OptimizationRequest(pid=1, command='/bin', user_name='/call_1'), created_at=1,
+                                  profile=profile, cpu_energy_policy_changed=True),
+                 OptimizedProcess(request=OptimizationRequest(pid=2, command='/bin', user_name='/call_2'), created_at=2,
+                                  profile=profile, cpu_energy_policy_changed=True)]
+
+        pre_context = await GeneralPostProcessSummarizer.instance().summarize(processes=procs, pids_alive={1, 2},
+                                                                              processes_to_relaunch=None,
+                                                                              context=context)
+
+        self.assertTrue(pre_context.keep_cpu_energy_policy)
+        self.assertIsNone(pre_context.restore_cpu_energy_policy)

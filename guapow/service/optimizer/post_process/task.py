@@ -90,7 +90,7 @@ class RestoreGPUState(PostProcessTask):
             await asyncio.gather(*restore_tasks)
 
 
-class RestoreCPUState(PostProcessTask):
+class RestoreCPUGovernor(PostProcessTask):
 
     def __init__(self, context: OptimizationContext):
         self._cpufreq_man = context.cpufreq_man
@@ -326,15 +326,60 @@ class RestoreMouseCursor(PostProcessTask):
         await self._mouse_man.show_cursor()
 
 
+class RestoreCPUEnergyPolicyLevel(PostProcessTask):
+
+    def __init__(self, context: OptimizationContext):
+        self._log = context.logger
+        self._man = context.cpuenergy_man
+
+    def should_run(self, context: PostProcessContext):
+        return context.restore_cpu_energy_policy
+
+    async def run(self, context: PostProcessContext):
+        async with self._man.lock():
+            saved_state = self._man.saved_state
+
+            if not saved_state:
+                self._log.info("No CPU energy policy level saved state to restore")
+                return
+
+            self._log.info(f"Restoring CPUs energy policy levels: "
+                           f"{', '.join(f'{idx}={state}' for idx, state in sorted(saved_state.items()))}")
+
+            cpus_changed = await self._man.change_states(saved_state)
+
+            if not cpus_changed:
+                self._log.error("Could not restore CPUs energy policy levels")
+                return
+
+            restored, not_restored = [], []
+
+            for idx, changed in cpus_changed.items():
+                if changed:
+                    restored.append(idx)
+                else:
+                    not_restored.append(str(idx))
+
+            if not_restored:
+                self._log.warning(f"Could not restore the energy policy levels of the following CPUs: "
+                                  f"{', '.join(sorted(not_restored))}")
+
+            if restored:
+                self._man.clear_state(*restored)
+                self._log.debug(f"Saved CPUs energy policy levels cleared: "
+                                f"{', '.join(str(i) for i in sorted(restored))}")
+
+
 class PostProcessTaskManager:
 
     __ORDER: Dict[Type[PostProcessTask], int] = {ReEnableWindowCompositor: 0,
                                                  PostStopProcesses: 1,
                                                  RestoreMouseCursor: 2,
                                                  RestoreGPUState: 3,
-                                                 RestoreCPUState: 4,
-                                                 RelaunchStoppedProcesses: 5,
-                                                 RunFinishScripts: 6}
+                                                 RestoreCPUGovernor: 4,
+                                                 RestoreCPUEnergyPolicyLevel: 5,
+                                                 RelaunchStoppedProcesses: 6,
+                                                 RunFinishScripts: 7}
 
     def __init__(self, context: OptimizationContext, tasks: Optional[List[PostProcessTask]] = None):
         self._tasks = tasks if tasks else [cls(context) for cls in PostProcessTask.__subclasses__() if cls != self.__class__]

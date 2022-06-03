@@ -1,8 +1,8 @@
 from unittest import TestCase
 
-from guapow.service.optimizer.post_process.context import PostProcessContextMapper, RestorableCPUsFiller, \
+from guapow.service.optimizer.post_process.context import PostProcessContextMapper, RestorableCPUGovernorsFiller, \
     RestorableGPUsFiller, \
-    SortedFinishScriptsFiller, SortedProcessesToRelaunchFiller, PostProcessContext
+    SortedFinishScriptsFiller, SortedProcessesToRelaunchFiller, PostProcessContext, RestorableCPUEnergyPolicyLevelFiller
 from guapow.service.optimizer.post_process.summary import PostProcessSummary
 
 
@@ -45,6 +45,38 @@ class SortedProcessesToRelaunchTest(TestCase):
         self.assertEqual({'def', 'jkl'}, self.context.not_stopped_processes)
 
 
+class RestorableCPUEnergyPolicyLevelFillerTest(TestCase):
+
+    def setUp(self):
+        self.context = PostProcessContext.empty()
+        self.summary = PostProcessSummary.empyt()
+        self.task = RestorableCPUEnergyPolicyLevelFiller()
+
+    def test_fill__must_set_restore_cpu_energy_policy_to_true_if_not_keep_and_restore_true(self):
+        self.summary.keep_cpu_energy_policy = False
+        self.summary.restore_cpu_energy_policy = True
+
+        self.assertIsNone(self.context.restore_cpu_energy_policy)
+        self.task.fill(self.context, self.summary)
+        self.assertTrue(self.context.restore_cpu_energy_policy)
+
+    def test_fill__must_set_restore_cpu_energy_policy_to_false_if_keep_and_restore_true(self):
+        self.summary.keep_cpu_energy_policy = True
+        self.summary.restore_cpu_energy_policy = True
+
+        self.assertIsNone(self.context.restore_cpu_energy_policy)
+        self.task.fill(self.context, self.summary)
+        self.assertFalse(self.context.restore_cpu_energy_policy)
+
+    def test_fill__must_set_restore_cpu_energy_policy_to_false_if_both_keep_and_restore_are_none(self):
+        self.summary.keep_cpu_energy_policy = None
+        self.summary.restore_cpu_energy_policy = None
+
+        self.assertIsNone(self.context.restore_cpu_energy_policy)
+        self.task.fill(self.context, self.summary)
+        self.assertFalse(self.context.restore_cpu_energy_policy)
+
+
 class PostProcessContextMapperTest(TestCase):
 
     def test_instance__must_always_return_the_same_instance(self):
@@ -55,7 +87,8 @@ class PostProcessContextMapperTest(TestCase):
         fillers = PostProcessContextMapper.instance().get_fillers()
         self.assertIsNotNone(fillers)
 
-        expected_fillers = [RestorableCPUsFiller, RestorableGPUsFiller, SortedFinishScriptsFiller, SortedProcessesToRelaunchFiller]
+        expected_fillers = [RestorableCPUGovernorsFiller, RestorableGPUsFiller, SortedFinishScriptsFiller,
+                            SortedProcessesToRelaunchFiller, RestorableCPUEnergyPolicyLevelFiller]
 
         self.assertEqual(len(expected_fillers), len(fillers))
 

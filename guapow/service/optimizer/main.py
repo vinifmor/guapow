@@ -13,7 +13,7 @@ from guapow.common.dto import OptimizationRequest
 from guapow.common.log import new_logger
 from guapow.common.model_util import FileModelFiller
 from guapow.service.optimizer import win_compositor, gpu
-from guapow.service.optimizer.cpu import CPUFrequencyManager, get_cpu_count
+from guapow.service.optimizer.cpu import CPUFrequencyManager, get_cpu_count, CPUEnergyPolicyManager
 from guapow.service.optimizer.flow import OptimizationQueue
 from guapow.service.optimizer.gpu import GPUManager
 from guapow.service.optimizer.handler import OptimizationHandler
@@ -82,10 +82,12 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
 
     cpu_count = get_cpu_count()
     cpufreq_man = CPUFrequencyManager(logger=logger, cpu_count=cpu_count)
+    cpu_energy_man = CPUEnergyPolicyManager(logger=logger, cpu_count=cpu_count)
     context = OptimizationContext(cpufreq_man=cpufreq_man, gpu_man=gpu_man, logger=logger, cpu_count=cpu_count,
                                   compositor=compositor, allow_root_scripts=bool(opt_config.allow_root_scripts),
-                                  launcher_mapping_timeout=opt_config.launcher_mapping_timeout, mouse_man=MouseCursorManager(logger),
-                                  renicer_interval=opt_config.renicer_interval, queue=OptimizationQueue.empty())
+                                  launcher_mapping_timeout=opt_config.launcher_mapping_timeout,
+                                  mouse_man=MouseCursorManager(logger), renicer_interval=opt_config.renicer_interval,
+                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue.empty())
 
     watcher_man = DeadProcessWatcherManager(context=context, restore_man=PostProcessTaskManager(context),
                                             check_interval=opt_config.check_finished_interval)

@@ -7,6 +7,7 @@
 - Changing applications priorities and CPU times
 - Changing applications IO priorities
 - Changing applications CPU scheduling policies (including realtime)
+- Changing CPU energy policy
 - Changing applications CPU cores affinities
 - Changing CPU cores frequency governors
 - Changing GPU power mode (only **Nvidia** and **AMD** devices at the moment)
@@ -30,6 +31,7 @@
     - [Changing application CPU scheduling](#opt_sched)
     - [Changing application CPU affinity](#opt_affinity)
     - [Changing CPU cores frequency scaling governor (performance)](#opt_cpu_freq)
+    - [Changing CPU cores energy policy level (full performance)](#opt_cpu_epl)
     - [Changing GPU power mode (performance)](#opt_gpu_power)
     - [Disabling window compositor](#opt_compositor)
     - [Stopping applications](#opt_stop_proc)
@@ -101,7 +103,7 @@ makepkg -si
     ```
 
     - The environment variable `GUAPOW_CONFIG` should be used to define the optimizations that must be applied when the target application starts. In the example above two were defined:
-        - `cpu.performance`: changes all CPUs frequency governors to **performance**
+        - `cpu.performance`: changes all CPUs frequency governors to **performance** (for supported Intel cpus, also the energy policy level)
         - `proc.nice=-1`: defines a CPU nice level for the started application. In simple words: a negative nice level will give more CPU priority and time for the application (more on this [here](#opt_nice))
 
      - The `guapow` command is responsible to start a target application and requests the defined optimizations for it.
@@ -109,6 +111,7 @@ makepkg -si
 - How to check if the optimizations were applied ?
     - **Nice level:** type `ps -Ao comm,nice | grep vlc`
     - **CPUs governors:** type `cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`
+    - **CPU energy policies (supported Intel CPUs only):**: type `cat /sys/devices/system/cpu/cpu*/power/energy_perf_bias` (values must be `0`)
     - **Optimizer service logs:** type `journalctl -efu guapow-opt.service`
       
 - When you close the optimized **vlc**, the **optimizer** service should rollback the CPU governors changes (use the commands above to re-checking)
@@ -233,7 +236,15 @@ makepkg -si
     - `cpu.performance` (equivalents: `cpu.performance=true` or `cpu.performance=1`)
 - The **optimizer** will keep the **performance** governor until the optimized application finishes. It handles the state if two or more optimized applications require `cpu.performance`. So if application A and B require `cpu.performance` and A finishes after a while, the performance governor will be kept until B finishes.
 - The governor is changed after the target application starts.
- 
+
+#### <a name="opt_cpu_epl">Changing CPU cores energy policy level (full performance)</a>
+- Only available for supported Intel CPUs (generally laptop ones)
+- The CPU energy policy level defines how much of energy should be saved. It ranges from 0 (no savings, full performance) to 15 (full power saving). More info [here](https://wiki.archlinux.org/title/CPU_frequency_scaling#Intel_performance_and_energy_bias_hint).
+- Property definition:
+  - `cpu.performance` (equivalents: `cpu.performance=true` or `cpu.performance=1`)
+- The **optimizer** will keep the performance energy policy level (`0`) until the optimized application finishes. It handles the state if two or more optimized applications require `cpu.performance`. So if application A and B require `cpu.performance` and A finishes after a while, the performance level will be kept until B finishes.
+- The energy policy level is changed after the target application starts.
+
  #### <a name="opt_gpu_power">Changing GPU power mode (performance)</a>
  - The GPU drivers can provide pre-defined power modes for different usages. Some modes focus on energy-saving, while others on performance (higher clocks ands memory transfer rate).
  - Property definition: 
@@ -458,7 +469,7 @@ makepkg -si
         launcher.mapping.timeout = 15 (max time in seconds to find the application mapped to a given launcher. float values are allowed)
         gpu.cache = false (if 'true': maps all available GPUs on startup. Otherwise, GPUs will be mapped for every request)
         gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd
-        cpu.performance = false  (activates cpu performance governors on startup)
+        cpu.performance = false  (set cpu governors and energy policy levels to full performance on startup)
         request.allowed_users = (restricts users that can request optimizations, separated by comma. e.g: root,xpto)
         request.encrypted = true (only accepts encrypted requests for security reasons)
         profile.cache = false (cache profile files on demand to skip I/O operations. Changes to profile files require restarting)
