@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.1] 2022-06-08
+
+### Fixes
+- AMD GPU performance mode not working [#1](https://github.com/vinifmor/guapow/issues/1)
+  - (test context -> GPU: Ryzen 7 5700G, Kernel: 5.15.45, O.S: Arch Linux)
+
+
 ## [1.1.0] 2022-06-03
 
 ### Features

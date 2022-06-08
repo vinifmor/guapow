@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from guapow import __app_name__
 from guapow.common.dto import OptimizationRequest
 from guapow.common.profile import StopProcessSettings
-from guapow.service.optimizer.gpu import NvidiaGPUDriver, GPUPowerMode, GPUState, AMDGPUDriver
+from guapow.service.optimizer.gpu import NvidiaGPUDriver, NvidiaPowerMode, GPUState, AMDGPUDriver
 from guapow.service.optimizer.profile import OptimizationProfile
 from guapow.service.optimizer.flow import OptimizationQueue
 from guapow.service.optimizer.task.model import OptimizedProcess, OptimizationContext
@@ -82,11 +82,11 @@ class DeadProcessWatcherTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.watch.system.read_current_pids', return_value={2})  # process 1 is not active anymore
     async def test_map_context__must_not_return_gpus_still_in_use_for_active_processes(self, read_current_pids: Mock):
-        pid_1_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND),
-                                          GPUState('1', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND)},
-                        AMDGPUDriver: {GPUState('0', AMDGPUDriver, GPUPowerMode.AUTO)}}
+        pid_1_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND),
+                                          GPUState('1', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND)},
+                        AMDGPUDriver: {GPUState('0', AMDGPUDriver, NvidiaPowerMode.AUTO)}}
 
-        pid_2_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND)}}
+        pid_2_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND)}}
 
         request_1 = OptimizationRequest(pid=1, user_name='user', command='/bin')
         request_2 = OptimizationRequest(pid=2, user_name='user', command='/bin')
@@ -109,23 +109,23 @@ class DeadProcessWatcherTest(IsolatedAsyncioTestCase):
         nvidia_to_restore = context.restorable_gpus[NvidiaGPUDriver]
         self.assertIsNotNone(nvidia_to_restore)
         self.assertEqual(1, len(nvidia_to_restore))
-        self.assertIn(GPUState('1', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND), nvidia_to_restore)
+        self.assertIn(GPUState('1', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND), nvidia_to_restore)
 
         self.assertIn(AMDGPUDriver, context.restorable_gpus)
         amd_to_restore = context.restorable_gpus[AMDGPUDriver]
         self.assertIsNotNone(amd_to_restore)
         self.assertEqual(1, len(amd_to_restore))
-        self.assertIn(GPUState('0', AMDGPUDriver, GPUPowerMode.AUTO), amd_to_restore)
+        self.assertIn(GPUState('0', AMDGPUDriver, NvidiaPowerMode.AUTO), amd_to_restore)
 
         read_current_pids.assert_called_once()
 
     @patch(f'{__app_name__}.service.optimizer.watch.system.read_current_pids', return_value={1})  # process 2 is not active anymore
     async def test_map_context__must_not_return_gpus_when_all_are_in_use(self, read_current_pids: Mock):
-        pid_1_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND),
-                                          GPUState('1', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND)},
-                        AMDGPUDriver: {GPUState('0', AMDGPUDriver, GPUPowerMode.AUTO)}}
+        pid_1_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND),
+                                          GPUState('1', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND)},
+                        AMDGPUDriver: {GPUState('0', AMDGPUDriver, NvidiaPowerMode.AUTO)}}
 
-        pid_2_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, GPUPowerMode.ON_DEMAND)}}
+        pid_2_states = {NvidiaGPUDriver: {GPUState('0', NvidiaGPUDriver, NvidiaPowerMode.ON_DEMAND)}}
 
         request_1 = OptimizationRequest(pid=1, user_name='user', command='/bin')
         request_2 = OptimizationRequest(pid=2, user_name='user', command='/bin')

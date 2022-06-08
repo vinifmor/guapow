@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Set, Tuple, Type, Awaitable
 from guapow.common import system
 from guapow.common.scripts import RunScripts
 from guapow.common.users import is_root_user
-from guapow.service.optimizer.gpu import GPUPowerMode, GPUState, GPUDriver
+from guapow.service.optimizer.gpu import GPUState, GPUDriver
 from guapow.service.optimizer.post_process.context import PostProcessContext
 from guapow.service.optimizer.task.model import OptimizationContext, CPUState
 
@@ -52,19 +52,22 @@ class RestoreGPUState(PostProcessTask):
             gpus_to_restore = {}
 
             for id_, modes in gpus_states.items():
-                mode = [*modes][0] if len(modes) == 1 else GPUPowerMode.AUTO  # if there is more than one mode mapped to same GPU, AUTO is preferred
+                # if there is more than one mode mapped to same GPU, a default mode is preferred
+                mode = [*modes][0] if len(modes) == 1 else driver.get_default_mode()
                 current_mode = gpus_current_modes.get(id_)
 
                 if mode:
                     if mode != current_mode:
                         gpus_to_restore[id_] = mode
                     else:
-                        self._log.info(f"It is not necessary to restore {driver.get_vendor_name()} GPU ({id_}) to '{mode.name.lower()}' mode")
+                        self._log.info(f"It is not necessary to restore {driver.get_vendor_name()} GPU ({id_}) to "
+                                       f"'{mode.name.lower()}' mode")
                 else:
                     self._log.error(f"Current mode unknown for {driver.get_vendor_name()} GPU '{id_}'")
 
             if gpus_to_restore:
-                self._log.debug(f"Restoring power mode of {driver.get_vendor_name()} GPUS: {', '.join(gpus_to_restore)}")
+                self._log.debug(f"Restoring power mode of {driver.get_vendor_name()} GPUS: "
+                                f"{', '.join(gpus_to_restore)}")
 
                 gpus_changed = await driver.set_power_mode(gpus_to_restore, user_env)
 
@@ -73,10 +76,12 @@ class RestoreGPUState(PostProcessTask):
                         not_restored = {gpu for gpu, changed in gpus_changed.items() if not changed}
 
                         if not_restored:
-                            self._log.error(f"Could not restore power mode of {driver.get_vendor_name()}  GPUS: {', '.join(gpus_changed)}")
+                            self._log.error(f"Could not restore power mode of {driver.get_vendor_name()}  GPUS: "
+                                            f"{', '.join(gpus_changed)}")
 
                 else:
-                    self._log.error(f"Could not restore power mode of {driver.get_vendor_name()} GPUs: {', '.join(gpus_to_restore.keys())}")
+                    self._log.error(f"Could not restore power mode of {driver.get_vendor_name()} GPUs: "
+                                    f"{', '.join(gpus_to_restore.keys())}")
 
     async def run(self, context: PostProcessContext):
         restore_tasks = []
