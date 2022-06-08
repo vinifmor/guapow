@@ -2,7 +2,7 @@ from unittest import TestCase
 
 from guapow.common.dto import OptimizationRequest
 from guapow.common.model import ScriptSettings
-from guapow.service.optimizer.gpu import AMDGPUDriver, GPUState, GPUPowerMode
+from guapow.service.optimizer.gpu import AMDGPUDriver, GPUState, NvidiaPowerMode
 from guapow.service.optimizer.task.model import OptimizedProcess, CPUState
 from guapow.service.optimizer.profile import OptimizationProfile, CompositorSettings, CPUSettings
 
@@ -47,7 +47,7 @@ class OptimizedProcessTest(TestCase):
         self.assertTrue(self.proc.should_be_watched())
 
     def test_should_be_watched__true_when_only_previous_gpu_states_are_defined(self):
-        self.proc.previous_gpus_states = {AMDGPUDriver: {GPUState('0', AMDGPUDriver, GPUPowerMode.ON_DEMAND)}}
+        self.proc.previous_gpus_states = {AMDGPUDriver: {GPUState('0', AMDGPUDriver, NvidiaPowerMode.ON_DEMAND)}}
         self.assertIsNone(self.proc.previous_cpu_state)
         self.assertEqual(set(), self.proc.related_pids)
         self.assertIsNone(self.proc.post_scripts)

@@ -2,7 +2,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import Mock, patch, call
 
 from guapow import __app_name__
-from guapow.service.optimizer.gpu import NvidiaGPUDriver, GPUPowerMode
+from guapow.service.optimizer.gpu import NvidiaGPUDriver, NvidiaPowerMode
 
 
 class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
@@ -31,6 +31,14 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
         self.assertIsNone(msg)
         which.assert_has_calls([call('nvidia-settings'), call('nvidia-smi')])
 
+    def test_get_default_mode__must_return_auto(self):
+        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        self.assertEqual(NvidiaPowerMode.AUTO, driver.get_default_mode())
+
+    def test_get_performance_mode__must_return_performance(self):
+        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        self.assertEqual(NvidiaPowerMode.PERFORMANCE, driver.get_performance_mode())
+
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, '0 \n 1 '))
     async def test_get_gpus__must_call_nvidia_smi_to_list_available_gpu_indexes(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
@@ -52,8 +60,8 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]): 2.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]): 1.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:2]): 0 "))
     async def test_get_power_mode__return_modes_from_nvidia_settings_query_for_defined_ids(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
-        self.assertEqual({'0': GPUPowerMode.AUTO,
-                          '1': GPUPowerMode.PERFORMANCE}, await driver.get_power_mode({'0', '1'}))  # gpu '2' mode must not be returned
+        self.assertEqual({'0': NvidiaPowerMode.AUTO,
+                          '1': NvidiaPowerMode.PERFORMANCE}, await driver.get_power_mode({'0', '1'}))  # gpu '2' mode must not be returned
         async_syscall.assert_called_once()
         self.assertTrue(async_syscall.call_args.args[0].startswith('nvidia-settings '))
         self.assertIn(' -q [gpu:0]/GpuPowerMizerMode', async_syscall.call_args.args[0])
@@ -70,20 +78,20 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
 
         env = {'TEST': 1, 'LANG': 'fr.UTF-8'}
-        res = await driver.set_power_mode({'0': GPUPowerMode.PERFORMANCE, '1': GPUPowerMode.ON_DEMAND}, user_environment=env)
+        res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.ON_DEMAND}, user_environment=env)
         self.assertEqual({'0': True, '1': True}, res)
         async_syscall.assert_called_once()
         self.assertTrue(async_syscall.call_args.args[0].startswith('nvidia-settings '))
         self.assertIn('custom_env', async_syscall.call_args.kwargs)
-        self.assertIn(f' -a [gpu:0]/GpuPowerMizerMode={GPUPowerMode.PERFORMANCE.value}', async_syscall.call_args.args[0])
-        self.assertIn(f' -a [gpu:1]/GpuPowerMizerMode={GPUPowerMode.ON_DEMAND.value}', async_syscall.call_args.args[0])
+        self.assertIn(f' -a [gpu:0]/GpuPowerMizerMode={NvidiaPowerMode.PERFORMANCE.value}', async_syscall.call_args.args[0])
+        self.assertIn(f' -a [gpu:1]/GpuPowerMizerMode={NvidiaPowerMode.ON_DEMAND.value}', async_syscall.call_args.args[0])
         self.assertEqual({**env, 'LANG': 'en_US.UTF-8'}, async_syscall.call_args.kwargs['custom_env'])
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]) assigned value 1.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]) assigned value 0."))
     async def test_set_power_mode__return_not_changed_gpu_mode_as_a_false_value(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
 
-        res = await driver.set_power_mode({'0': GPUPowerMode.PERFORMANCE, '1': GPUPowerMode.PERFORMANCE})
+        res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': True, '1': False}, res)
         async_syscall.assert_called_once()
 
@@ -91,7 +99,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
     async def test_set_power_mode__return_false_for_all_gpus_when_unknown_output(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
 
-        res = await driver.set_power_mode({'0': GPUPowerMode.PERFORMANCE, '1': GPUPowerMode.PERFORMANCE})
+        res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': False, '1': False}, res)
         async_syscall.assert_called_once()
 
@@ -99,7 +107,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
     async def test_set_power_mode__return_false_for_all_gpus_when_empty_output(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
 
-        res = await driver.set_power_mode({'0': GPUPowerMode.PERFORMANCE, '1': GPUPowerMode.PERFORMANCE})
+        res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': False, '1': False}, res)
         async_syscall.assert_called_once()
 
@@ -107,9 +115,9 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
     async def test_set_power_mode__must_call_nvidia_settings_with_english_as_default_language_when_no_user_env_is_defined(self, async_syscall: Mock):
         driver = NvidiaGPUDriver(cache=False, logger=Mock())
 
-        await driver.set_power_mode({'0': GPUPowerMode.PERFORMANCE, '1': GPUPowerMode.ON_DEMAND}, user_environment=None)
+        await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.ON_DEMAND}, user_environment=None)
         self.assertTrue(async_syscall.call_args.args[0].startswith('nvidia-settings '))
         self.assertIn('custom_env', async_syscall.call_args.kwargs)
-        self.assertIn(f' -a [gpu:0]/GpuPowerMizerMode={GPUPowerMode.PERFORMANCE.value}', async_syscall.call_args.args[0])
-        self.assertIn(f' -a [gpu:1]/GpuPowerMizerMode={GPUPowerMode.ON_DEMAND.value}', async_syscall.call_args.args[0])
+        self.assertIn(f' -a [gpu:0]/GpuPowerMizerMode={NvidiaPowerMode.PERFORMANCE.value}', async_syscall.call_args.args[0])
+        self.assertIn(f' -a [gpu:1]/GpuPowerMizerMode={NvidiaPowerMode.ON_DEMAND.value}', async_syscall.call_args.args[0])
         self.assertEqual({'LANG': 'en_US.UTF-8'}, async_syscall.call_args.kwargs['custom_env'])

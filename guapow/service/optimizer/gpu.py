@@ -9,18 +9,12 @@ from copy import deepcopy
 from glob import glob
 from logging import Logger
 from re import Pattern
-from typing import Optional, Tuple, Set, Dict, List, Type, AsyncIterator
+from typing import Optional, Tuple, Set, Dict, List, Type, AsyncIterator, Any
 
 import aiofiles
 
 from guapow.common import system
 from guapow.common.model import CustomEnum
-
-
-class GPUPowerMode(CustomEnum):
-    ON_DEMAND = 0
-    PERFORMANCE = 1
-    AUTO = 2
 
 
 class UnknownGPUDriver(Exception):
@@ -63,16 +57,32 @@ class GPUDriver(ABC):
         pass
 
     @abstractmethod
-    async def set_power_mode(self, ids_modes: Dict[str, GPUPowerMode], user_environment: Optional[Dict[str, str]]) -> Dict[str, bool]:
+    async def set_power_mode(self, ids_modes: Dict[str, Any], user_environment: Optional[Dict[str, str]]) \
+            -> Dict[str, bool]:
         pass
 
     @abstractmethod
-    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]]) -> Optional[Dict[str, GPUPowerMode]]:
+    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]]) \
+            -> Optional[Dict[str, Any]]:
         pass
 
     @abstractmethod
     def can_work(self) -> Tuple[bool, Optional[str]]:
         pass
+
+    @abstractmethod
+    def get_default_mode(self) -> Any:
+        pass
+
+    @abstractmethod
+    def get_performance_mode(self) -> Any:
+        pass
+
+
+class NvidiaPowerMode(CustomEnum):
+    ON_DEMAND = 0
+    PERFORMANCE = 1
+    AUTO = 2
 
 
 class NvidiaGPUDriver(GPUDriver):
@@ -116,11 +126,13 @@ class NvidiaGPUDriver(GPUDriver):
         env['LANG'] = 'en_US.UTF-8'
         return env
 
-    async def set_power_mode(self, ids_modes: Dict[str, GPUPowerMode], user_environment: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+    async def set_power_mode(self, ids_modes: Dict[str, NvidiaPowerMode],
+                             user_environment: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
         params = ' '.join((f'-a [gpu:{i}]/GpuPowerMizerMode={m.value}' for i, m in ids_modes.items()))
         cmd = f'nvidia-settings {params}'
 
-        self._log.info(f"Changing {self.get_vendor_name()} GPUs power mode ({', '.join((f'{i}={ids_modes[i].value}' for i in ids_modes))}): {cmd}")
+        log_str = {', '.join((f'{i}={ids_modes[i].value}' for i in ids_modes))}
+        self._log.info(f"Changing {self.get_vendor_name()} GPUs power mode ({log_str}): {cmd}")
         _, output = await system.async_syscall(cmd, custom_env=self._map_env_vars(user_environment))
 
         if output:
@@ -130,13 +142,15 @@ class NvidiaGPUDriver(GPUDriver):
                 try:
                     return {id_: int(mode) == ids_modes[id_].value for id_, mode in changed_gpus if id_ in ids_modes}
                 except ValueError:
-                    self._log.error(f"[{self.__class__.__name__}] Error while parsing changing modes response: {output}")
+                    self._log.error(f"[{self.__class__.__name__}] Error while parsing changing modes response: "
+                                    f"{output}")
 
         err_msg = output.replace('\n', ' ') if output else ''
         self._log.error(f"[{self.__class__.__name__}] Could not determine the changing modes response: {err_msg}")
         return {i: False for i in ids_modes}
 
-    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]] = None) -> Optional[Dict[str, GPUPowerMode]]:
+    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]] = None) \
+            -> Optional[Dict[str, NvidiaPowerMode]]:
         if gpu_ids:
             gpus_query = ' '.join((f'-q [gpu:{id_}]/GpuPowerMizerMode' for id_ in gpu_ids))
             cmd = f"nvidia-settings {gpus_query}"
@@ -150,7 +164,7 @@ class NvidiaGPUDriver(GPUDriver):
 
                     if modes:
                         try:
-                            return {id_: GPUPowerMode.from_value(int(mode)) for id_, mode in modes if id_ in gpu_ids}
+                            return {id_: NvidiaPowerMode.from_value(int(mode)) for id_, mode in modes if id_ in gpu_ids}
                         except ValueError:
                             self._log.error(f"[{self.__class__.__name__}] Error when parsing power modes: {modes}")
 
@@ -168,119 +182,149 @@ class NvidiaGPUDriver(GPUDriver):
 
         return True, None
 
+    def get_default_mode(self) -> NvidiaPowerMode:
+        return NvidiaPowerMode.AUTO
+
+    def get_performance_mode(self) -> NvidiaPowerMode:
+        return NvidiaPowerMode.PERFORMANCE
+
 
 class AMDGPUDriver(GPUDriver):
 
-    GPUS_PATH = '/sys/bus/pci/drivers/amdgpu'
     PERFORMANCE_FILE = 'power_dpm_force_performance_level'
-    PROFILE_FILE = 'pp_compute_power_profile'
+    PROFILE_FILE = 'pp_power_profile_mode'
+    VENDOR = 'AMD'
 
-    def __init__(self, cache: bool, logger: Logger, gpus_path: str = GPUS_PATH):
+    def __init__(self, cache: bool, logger: Logger, gpus_path: str = '/sys/class/drm/card{id}/device'):
         super(AMDGPUDriver, self).__init__(cache, logger)
-        self._default_performance_level = {}
-        self._default_power_profile = {}
         self._gpus_path = gpus_path
+        self._re_gpu_id: Optional[Pattern] = None
 
-    async def get_gpus(self) -> Optional[Set[str]]:
-        gpus = set()
-        for gpu_mode_path in glob(f'{self._gpus_path}/*/{self.PERFORMANCE_FILE}'):  # FIXME no async glob at the moment
-            if os.access(gpu_mode_path, mode=os.W_OK):  # if writing is allowed
-                mode_dir = os.path.dirname(gpu_mode_path)
-                power_file = f'{mode_dir}/{self.PROFILE_FILE}'
-                if os.access(power_file, mode=os.W_OK):
-                    gpus.add(os.path.basename(mode_dir))
-
-        return gpus
+    @classmethod
+    def get_vendor_name(cls) -> str:
+        return cls.VENDOR
 
     def can_work(self) -> Tuple[bool, Optional[str]]:
         return True, None
 
-    @classmethod
-    def get_vendor_name(cls) -> str:
-        return 'AMD'
+    async def get_gpus(self) -> Optional[Set[str]]:
+        required_files = {self.PERFORMANCE_FILE: set(), self.PROFILE_FILE: set()}
 
-    async def _read_file(self, gpu_id: str, file: str) -> Optional[str]:
-        file_path = f'{self._gpus_path}/{gpu_id}/{file}'
+        for gpu_file_path in glob(f"{self._gpus_path.format(id='*')}/*"):
+            gpu_file = os.path.basename(gpu_file_path)
+            if gpu_file in required_files:
+                if not os.access(gpu_file_path, mode=os.W_OK):
+                    self._log.warning(f"Writing is not allowed for {self.get_vendor_name()} GPU file {gpu_file_path}. "
+                                      f"It will not be possible to set this GPU to performance mode")
+                else:
+                    required_files[gpu_file].add(os.path.dirname(gpu_file_path))
+
+        all_gpu_dirs = {gpu_dir for paths in required_files.values() for gpu_dir in paths}
+
+        if all_gpu_dirs:
+            gpus = set()
+            for gpu_dir in all_gpu_dirs:
+                all_files_available = True
+                for gpu_file_dirs in required_files.values():
+                    if gpu_dir not in gpu_file_dirs:
+                        all_files_available = False
+
+                if all_files_available:
+                    gpus.add(gpu_dir)
+
+            return gpus if gpus else None
+
+    async def _read_file(self, file_path: str) -> Optional[str]:
         try:
             async with aiofiles.open(file_path) as f:
                 return (await f.read()).strip()
         except:
             err_stack = traceback.format_exc().replace('\n', ' ')
-            self._log.error(f"[{self.__class__.__name__}] Could not read file '{file}': {err_stack}")
+            self._log.error(f"[{self.__class__.__name__}] Could not read file '{file_path}': {err_stack}")
 
-    async def _add_power_mode(self, gpu_id: str, gpu_modes: Dict[str, GPUPowerMode]):
-        perf_level = await self._read_file(gpu_id, self.PERFORMANCE_FILE)
+    def _map_power_mode_output(self, output: str, file_path: str) -> Optional[str]:
+        if output is not None:
+            for raw_line in output.split('\n'):
+                line = raw_line.strip().split(' ')
 
-        if perf_level is None:
+                if len(line) > 1 and line[-1].endswith('*'):
+                    return line[0].strip()
+
+            content_log = output.replace('\n', ' ')
+            self._log.error(f"Could not map the {self.get_vendor_name()} power mode from {file_path}. "
+                            f"Content: {content_log}")
+
+    async def _fill_power_mode(self, gpu_id: str, gpu_modes: Dict[str, str]):
+        control_file = f'{gpu_id}/{self.PERFORMANCE_FILE}'
+        control_type = await self._read_file(control_file)
+        self._log.debug(f"{self.get_vendor_name()} GPU file ({control_file}): {control_type}")
+
+        if not control_type:
             return
 
-        if perf_level != 'auto' and self._default_performance_level.get(gpu_id) is None:
-            self._default_performance_level[gpu_id] = perf_level
+        power_file = f'{gpu_id}/{self.PROFILE_FILE}'
+        power_mode = self._map_power_mode_output(await self._read_file(power_file), power_file)
+        self._log.debug(f"{self.get_vendor_name()} GPU file ({power_file}): {power_mode}")
 
-        power_profile = await self._read_file(gpu_id, self.PROFILE_FILE)
-
-        if power_profile is None:
+        if not power_mode:
             return
 
-        if power_profile != 'set' and self._default_power_profile.get(gpu_id) is None:
-            self._default_power_profile[gpu_id] = power_profile
+        gpu_modes[gpu_id] = f'{control_type}:{power_mode}'
 
-        gpu_modes[gpu_id] = GPUPowerMode.PERFORMANCE if (perf_level == 'auto' and power_profile == 'set') else GPUPowerMode.AUTO
-
-    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]] = None) -> Optional[Dict[str, GPUPowerMode]]:
+    async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]] = None) \
+            -> Optional[Dict[str, str]]:
         if gpu_ids:
             res = {}
-            await asyncio.gather(*[self._add_power_mode(gpu_id, res) for gpu_id in gpu_ids])
+            await asyncio.gather(*tuple(self._fill_power_mode(gpu_id, res) for gpu_id in gpu_ids))
             return res if res else None
 
-    async def _write_to_file(self, content: str, gpu_id: str, file: str) -> bool:
-        file_path = f'{self._gpus_path}/{gpu_id}/{file}'
-
+    async def _write_to_file(self, file_path: str, content: str) -> bool:
         try:
             async with aiofiles.open(file_path, 'w+') as f:
                 await f.write(content)
+            return True
         except:
             self._log.error(f"[{self.__class__.__name__}] Could not write '{content}' to file '{file_path}'")
             traceback.print_exc()
             return False
 
-        return True
+    async def _fill_write_result(self, file_path: str, content: str, id_: str, output: Dict[str, List[bool]]):
+        output[id_].append(await self._write_to_file(file_path, content))
 
-    def map_performance_level(self, mode: GPUPowerMode, gpu_id: Optional[str]) -> Optional[str]:
-        if mode == GPUPowerMode.PERFORMANCE:
-            return 'auto'
-        elif gpu_id is not None and self._default_performance_level:
-            return self._default_performance_level.get(gpu_id)
-
-    def map_power_profile(self, mode: GPUPowerMode, gpu_id: Optional[str]) -> Optional[str]:
-        if mode == GPUPowerMode.PERFORMANCE:
-            return 'set'
-        elif gpu_id is not None and self._default_power_profile:
-            return self._default_power_profile.get(gpu_id)
-
-    async def _set_power_mode(self, gpu: str, mode: GPUPowerMode, gpu_power: Dict[str, bool]):
-        level = self.map_performance_level(mode, gpu)
-
-        if level is not None and await self._write_to_file(level, gpu, self.PERFORMANCE_FILE):
-            profile = self.map_power_profile(mode, gpu)
-
-            if profile is not None:
-                if await self._write_to_file(profile, gpu, self.PROFILE_FILE):
-                    gpu_power[gpu] = True
-                    return
-
-        gpu_power[gpu] = False
-
-    async def set_power_mode(self, ids_modes: Dict[str, GPUPowerMode], user_environment: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+    async def set_power_mode(self, ids_modes: Dict[str, str],
+                             user_environment: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
         res = {}
-        self._log.info(f"Changing {self.get_vendor_name()} GPUs power mode [{', '.join(f'{i}={m.name}' for i, m in sorted(ids_modes.items()))}]")
-        await asyncio.gather(*[self._set_power_mode(gpu, mode, res) for gpu, mode in ids_modes.items()])
+        if ids_modes:
+            coros, writes = [], dict()
+            for gpu_dir, mode_str in ids_modes.items():
+                mode = mode_str.split(':')
+
+                if len(mode) == 2:
+                    self._log.info(f"Changing {self.get_vendor_name()} GPU ({gpu_dir}) operation mode "
+                                   f"(performance: {mode[0]}, profile: {mode[1]})")
+                    writes[gpu_dir] = list()
+                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], gpu_dir,
+                                                         writes))
+                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}', mode[1], gpu_dir, writes))
+
+            await asyncio.gather(*coros)
+
+            for gpu_dir in ids_modes:
+                gpu_writes = writes.get(gpu_dir)
+                res[gpu_dir] = gpu_writes and all(gpu_writes)
+
         return res
+
+    def get_default_mode(self) -> str:
+        return 'auto:3'
+
+    def get_performance_mode(self) -> str:
+        return 'manual:5'
 
 
 class GPUState:
 
-    def __init__(self, id_: str, driver_class: Type, power_mode: GPUPowerMode):
+    def __init__(self, id_: str, driver_class: Type, power_mode: Any):
         self.id = id_
         self.driver_class = driver_class
         self.power_mode = power_mode
@@ -293,8 +337,9 @@ class GPUState:
         return hash(self.driver_class) + hash(self.id)
 
     def __repr__(self):
-        attrs = ', '.join(f'{p}={v.__name__ if isinstance(v, type) else v}' for p, v in sorted(self.__dict__.items()) if v)
-        return f'{self.__class__.__name__} ({attrs})'
+        attrs = self.__dict__.items()
+        attr_str = ', '.join(f'{p}={v.__name__ if isinstance(v, type) else v}' for p, v in sorted(attrs) if v)
+        return f'{self.__class__.__name__} ({attr_str})'
 
 
 class GPUManager:
@@ -307,7 +352,7 @@ class GPUManager:
         self._drivers = drivers
         self._drivers_lock = Lock()
         self._cache_gpus = cache_gpus
-        self._gpu_state_cache: Dict[Type[GPUDriver], Dict[str, GPUPowerMode]] = {}
+        self._gpu_state_cache: Dict[Type[GPUDriver], Dict[str, Any]] = {}
         self._gpu_state_cache_lock = Lock()
         self._log_cache: Dict[Type[GPUDriver], Dict[int, object]] = {}  # to avoid repetitive logs
         self._working_drivers_cache: Optional[List[GPUDriver]] = None  # cached working drivers (only when 'cache_gpus')
@@ -336,7 +381,8 @@ class GPUManager:
             logged = driver_cache.get(self.LOG_CACHE_KEY__WORK)
 
             if not logged:
-                self._log.warning(f"{driver.get_vendor_name()} GPUs cannot be managed: {reason if reason else 'unknown reason'}")
+                self._log.warning(f"{driver.get_vendor_name()} GPUs cannot be managed: "
+                                  f"{reason if reason else 'unknown reason'}")
                 driver_cache[self.LOG_CACHE_KEY__WORK] = True
 
         return can_work
@@ -390,20 +436,23 @@ class GPUManager:
                 async for driver, gpus in self._map_drivers_and_gpus():
                     yield driver, gpus
 
-    async def activate_performance(self, user_environment: Optional[Dict[str, str]] = None) -> Optional[Dict[Type[GPUDriver], Set[GPUState]]]:
+    async def activate_performance(self, user_environment: Optional[Dict[str, str]] = None) \
+            -> Optional[Dict[Type[GPUDriver], Set[GPUState]]]:
+
         res = {}
         async for driver, gpus in self.map_working_drivers_and_gpus():
             async with driver.lock():
                 gpu_modes = await driver.get_power_mode(gpus, user_environment)
 
                 if gpu_modes:
+                    performance_mode = driver.get_performance_mode()
                     async with self._gpu_state_cache_lock:
                         cached_states = self._gpu_state_cache.get(driver.__class__, {})
                         self._gpu_state_cache[driver.__class__] = cached_states
 
                         driver_res, not_in_performance = set(), set()
                         for gpu, mode in gpu_modes.items():
-                            if mode != GPUPowerMode.PERFORMANCE:
+                            if performance_mode != mode:
                                 cached_states[gpu] = mode
                                 driver_res.add(GPUState(gpu, driver.__class__, mode))
                                 not_in_performance.add(gpu)
@@ -414,12 +463,14 @@ class GPUManager:
                                     driver_res.add(GPUState(gpu, driver.__class__, old_state))
 
                     if not_in_performance:
-                        gpus_changed = await driver.set_power_mode({g: GPUPowerMode.PERFORMANCE for g in not_in_performance}, user_environment)
+                        gpus_changed = await driver.set_power_mode({g: performance_mode for g in not_in_performance},
+                                                                   user_environment)
 
                         not_changed = {gpu for gpu, changed in gpus_changed.items() if not changed}
 
                         if not_changed:
-                            self._log.error(f"Could not change power mode of {driver.get_vendor_name()} GPUs: {', '.join(sorted(not_changed))}")
+                            self._log.error(f"Could not change power mode of {driver.get_vendor_name()} GPUs: "
+                                            f"{', '.join(sorted(not_changed))}")
 
                     res[driver.__class__] = driver_res
 
@@ -432,7 +483,7 @@ class GPUManager:
         if self._working_drivers_cache:
             return [*self._working_drivers_cache]
 
-    def get_gpu_state_cache_view(self) -> Dict[Type[GPUDriver], Dict[str, GPUPowerMode]]:
+    def get_gpu_state_cache_view(self) -> Dict[Type[GPUDriver], Dict[str, Any]]:
         return deepcopy(self._gpu_state_cache)
 
 

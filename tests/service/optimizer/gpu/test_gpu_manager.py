@@ -4,7 +4,7 @@ from typing import List, Tuple, Set
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import Mock, AsyncMock, call, MagicMock
 
-from guapow.service.optimizer.gpu import GPUManager, GPUPowerMode, NvidiaGPUDriver, AMDGPUDriver, GPUState, GPUDriver
+from guapow.service.optimizer.gpu import GPUManager, NvidiaPowerMode, AMDGPUDriver, GPUState, GPUDriver
 
 
 class GPUManagerTest(IsolatedAsyncioTestCase):
@@ -88,42 +88,48 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver_1.__class__ = GPUDriver
         driver_1.lock.return_value = Lock()
         driver_1.can_work.return_value = True, None
+        driver_1.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
         driver_1.get_cached_gpus = AsyncMock(return_value={'0'})
-        driver_1.get_power_mode = AsyncMock(return_value={'0': GPUPowerMode.ON_DEMAND})
+        driver_1.get_power_mode = AsyncMock(return_value={'0': NvidiaPowerMode.ON_DEMAND})
         driver_1.set_power_mode = AsyncMock(return_value={'0': True})
 
         driver_2 = Mock()
         driver_2.__class__ = AMDGPUDriver
         driver_2.lock.return_value = Lock()
         driver_2.can_work.return_value = True, None
+        driver_2_perf_mode = 'manual:5'
+        driver_2_def_mode = 'auto:3'
+        driver_2.get_performance_mode.return_value = driver_2_perf_mode
         driver_2.get_cached_gpus = AsyncMock(return_value={'1'})
-        driver_2.get_power_mode = AsyncMock(return_value={'1': GPUPowerMode.AUTO})
+        driver_2.get_power_mode = AsyncMock(return_value={'1': driver_2_def_mode})
         driver_2.set_power_mode = AsyncMock(return_value={'1': True})
 
         gpu_man = GPUManager(logger=Mock(), drivers=[driver_1, driver_2])
         actual_changes = await gpu_man.activate_performance()
 
         driver_1.lock.assert_called_once()
+        driver_1.get_performance_mode.assert_called()
         driver_1.get_cached_gpus.assert_called_once()
         driver_1.can_work.assert_called_once()
         driver_1.get_power_mode.assert_called_once_with({'0'}, None)
-        driver_1.set_power_mode.assert_called_once_with({'0': GPUPowerMode.PERFORMANCE}, None)
+        driver_1.set_power_mode.assert_called_once_with({'0': NvidiaPowerMode.PERFORMANCE}, None)
 
         driver_2.lock.assert_called_once()
+        driver_2.get_performance_mode.assert_called()
         driver_2.get_cached_gpus.assert_called_once()
         driver_2.can_work.assert_called_once()
         driver_2.get_power_mode.assert_called_once_with({'1'}, None)
-        driver_2.set_power_mode.assert_called_once_with({'1': GPUPowerMode.PERFORMANCE}, None)
+        driver_2.set_power_mode.assert_called_once_with({'1': driver_2_perf_mode}, None)
 
         self.assertIsNotNone(actual_changes)
 
-        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, GPUPowerMode.ON_DEMAND)},
-                            AMDGPUDriver: {GPUState('1', AMDGPUDriver, GPUPowerMode.AUTO)}}
+        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, NvidiaPowerMode.ON_DEMAND)},
+                            AMDGPUDriver: {GPUState('1', AMDGPUDriver, driver_2_def_mode)}}
 
         self.assertEqual(expected_changes, actual_changes)
 
-        expected_state_cache = {GPUDriver: {'0': GPUPowerMode.ON_DEMAND},
-                                AMDGPUDriver: {'1': GPUPowerMode.AUTO}}
+        expected_state_cache = {GPUDriver: {'0': NvidiaPowerMode.ON_DEMAND},
+                                AMDGPUDriver: {'1': driver_2_def_mode}}
 
         self.assertEqual(expected_state_cache, gpu_man.get_gpu_state_cache_view())
 
@@ -134,8 +140,10 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver.__class__ = GPUDriver
         driver.lock.return_value = driver_lock
         driver.can_work.return_value = True, None
+        driver.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
         driver.get_cached_gpus = AsyncMock(return_value={'0'})
-        driver.get_power_mode = AsyncMock(side_effect=[{'0': GPUPowerMode.ON_DEMAND}, {'0': GPUPowerMode.PERFORMANCE}])
+        driver.get_power_mode = AsyncMock(side_effect=[{'0': NvidiaPowerMode.ON_DEMAND},
+                                                       {'0': NvidiaPowerMode.PERFORMANCE}])
         driver.set_power_mode = AsyncMock(return_value={'0': True})
 
         gpu_man = GPUManager(Mock(), [driver], cache_gpus=False)
@@ -143,16 +151,17 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         changes = await asyncio.gather(gpu_man.activate_performance(), gpu_man.activate_performance())
 
         for change in changes:
-            self.assertEqual({GPUDriver: {GPUState('0', GPUDriver, GPUPowerMode.PERFORMANCE)}}, change)
+            self.assertEqual({GPUDriver: {GPUState('0', GPUDriver, NvidiaPowerMode.PERFORMANCE)}}, change)
 
+        driver.get_performance_mode.assert_called()
         self.assertEqual(2, driver.can_work.call_count)
         self.assertEqual(2, driver.get_cached_gpus.call_count)
         self.assertEqual(2, driver.lock.call_count)
         driver.get_power_mode.assert_has_calls([call({'0'}, None), call({'0'}, None)])
 
-        driver.set_power_mode.assert_called_once_with({'0': GPUPowerMode.PERFORMANCE}, None)
+        driver.set_power_mode.assert_called_once_with({'0': NvidiaPowerMode.PERFORMANCE}, None)
 
-        expected_state_cache = {GPUDriver: {'0': GPUPowerMode.ON_DEMAND}}
+        expected_state_cache = {GPUDriver: {'0': NvidiaPowerMode.ON_DEMAND}}
         self.assertEqual(expected_state_cache, gpu_man.get_gpu_state_cache_view())
 
     async def test_activate_performance__should_not_set_gpu_to_performance_when_previously_set(self):
@@ -160,22 +169,24 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver_1.__class__ = GPUDriver
         driver_1.lock.return_value = Lock()
         driver_1.can_work.return_value = True, None
+        driver_1.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
         driver_1.get_cached_gpus = AsyncMock(return_value={'0'})
-        driver_1.get_power_mode = AsyncMock(return_value={'0': GPUPowerMode.PERFORMANCE})
+        driver_1.get_power_mode = AsyncMock(return_value={'0': NvidiaPowerMode.PERFORMANCE})
         driver_1.set_power_mode = AsyncMock(return_value={'0', True})
 
-        initial_state_cache = {GPUDriver: {'0': GPUPowerMode.ON_DEMAND}}
+        initial_state_cache = {GPUDriver: {'0': NvidiaPowerMode.ON_DEMAND}}
         gpu_man = GPUManager(logger=Mock(), drivers=[driver_1])
         gpu_man._gpu_state_cache = initial_state_cache
 
         actual_changes = await gpu_man.activate_performance()
         self.assertIsNotNone(actual_changes)
 
-        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, GPUPowerMode.ON_DEMAND)}}
+        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, NvidiaPowerMode.ON_DEMAND)}}
 
         self.assertEqual(expected_changes, actual_changes)
 
         driver_1.can_work.assert_called_once()
+        driver_1.get_performance_mode.assert_called()
         driver_1.get_cached_gpus.assert_called_once()
         driver_1.lock.assert_called_once()
         driver_1.get_power_mode.assert_called_once_with({'0'}, None)
@@ -187,26 +198,28 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver_1.__class__ = GPUDriver
         driver_1.lock.return_value = Lock()
         driver_1.can_work.return_value = True, None
+        driver_1.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
         driver_1.get_cached_gpus = AsyncMock(return_value={'0'})
-        driver_1.get_power_mode = AsyncMock(return_value={'0': GPUPowerMode.AUTO})
+        driver_1.get_power_mode = AsyncMock(return_value={'0': NvidiaPowerMode.AUTO})
         driver_1.set_power_mode = AsyncMock(return_value={'0': True})
 
-        initial_state_cache = {GPUDriver: {'0': GPUPowerMode.ON_DEMAND}}
+        initial_state_cache = {GPUDriver: {'0': NvidiaPowerMode.ON_DEMAND}}
         gpu_man = GPUManager(logger=Mock(), drivers=[driver_1])
         gpu_man._gpu_state_cache = initial_state_cache
 
         actual_changes = await gpu_man.activate_performance()
         self.assertIsNotNone(actual_changes)
 
-        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, GPUPowerMode.AUTO)}}
+        expected_changes = {GPUDriver: {GPUState('0', GPUDriver, NvidiaPowerMode.AUTO)}}
 
         self.assertEqual(expected_changes, actual_changes)
 
         driver_1.can_work.assert_called_once()
+        driver_1.get_performance_mode.assert_called()
         driver_1.get_cached_gpus.assert_called_once()
         driver_1.lock.assert_called_once()
 
         driver_1.get_power_mode.assert_called_once_with({'0'}, None)
-        driver_1.set_power_mode.assert_called_once_with({'0': GPUPowerMode.PERFORMANCE}, None)
+        driver_1.set_power_mode.assert_called_once_with({'0': NvidiaPowerMode.PERFORMANCE}, None)
 
-        self.assertEqual({GPUDriver: {'0': GPUPowerMode.AUTO}}, gpu_man.get_gpu_state_cache_view())
+        self.assertEqual({GPUDriver: {'0': NvidiaPowerMode.AUTO}}, gpu_man.get_gpu_state_cache_view())
