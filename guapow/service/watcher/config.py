@@ -13,12 +13,15 @@ class ProcessWatcherConfig(FileModel):
     FILE_NAME = 'watch.conf'
     FILE_MAPPING = {'interval': ('check_interval', float, None),
                     'regex.cache': ('regex_cache', bool, True),
-                    'mapping.cache': ('mapping_cache', bool, True)}
+                    'mapping.cache': ('mapping_cache', bool, True),
+                    'ignored.cache': ('ignored_cache', bool, True)}
 
-    def __init__(self, regex_cache: Optional[bool], check_interval: Optional[float], mapping_cache: Optional[bool]):
+    def __init__(self, regex_cache: Optional[bool], check_interval: Optional[float], mapping_cache: Optional[bool],
+                 ignored_cache: Optional[bool]):
         self.check_interval = check_interval
         self.regex_cache = regex_cache
         self.mapping_cache = mapping_cache
+        self.ignored_cache = ignored_cache
 
     def get_output_name(self) -> str:
         pass
@@ -29,7 +32,8 @@ class ProcessWatcherConfig(FileModel):
     def is_valid(self) -> bool:
         return all((self.is_check_interval_valid(),
                     self.regex_cache is not None,
-                    self.mapping_cache is not None))
+                    self.mapping_cache is not None,
+                    self.ignored_cache is not None))
 
     def is_check_interval_valid(self):
         return self.check_interval is not None and self.check_interval > 0
@@ -44,12 +48,15 @@ class ProcessWatcherConfig(FileModel):
         if self.mapping_cache is None:
             self.mapping_cache = False
 
+        if self.ignored_cache is None:
+            self.ignored_cache = False
+
     def get_file_root_node_name(self) -> Optional[str]:
         pass
 
     @classmethod
     def empty(cls) -> "ProcessWatcherConfig":
-        return cls(None, None, None)
+        return cls(None, None, None, None)
 
     @classmethod
     def default(cls) -> "ProcessWatcherConfig":

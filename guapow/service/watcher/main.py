@@ -8,10 +8,10 @@ from guapow.common.auth import read_machine_id
 from guapow.common.config import read_optimizer_config
 from guapow.common.log import new_logger, get_log_level
 from guapow.common.model_util import FileModelFiller
-from guapow.service.watcher import mapping
+from guapow.service.watcher import mapping, ignored
 from guapow.service.watcher.config import ProcessWatcherConfig, ProcessWatcherConfigReader
 from guapow.service.watcher.core import ProcessWatcherContext, ProcessWatcher
-from guapow.service.watcher.mapping import RegexMapper
+from guapow.service.watcher.patterns import RegexMapper
 
 
 def is_log_enabled() -> bool:
@@ -58,13 +58,17 @@ async def watch():
 
     context = ProcessWatcherContext(user_id=os.getuid(), user_name=getpass.getuser(), user_env=user_env,
                                     logger=logger, optimized={}, opt_config=opt_config, watch_config=watch_config,
-                                    mapping_file_path=mapping.get_default_file_path(user_id, user_name, logger), machine_id=machine_id)
+                                    mapping_file_path=mapping.get_default_file_path(user_id, user_name, logger),
+                                    machine_id=machine_id,
+                                    ignored_file_path=ignored.get_default_file_path(user_id, user_name, logger),
+                                    ignored_procs=dict())
 
     regex_mapper = RegexMapper(cache=watch_config.regex_cache, logger=logger)
     watcher = ProcessWatcher(regex_mapper, context)
     logger.info(f'Requests encryption: {str(machine_id is not None).lower()}')
     logger.info(f'Regex cache: {str(watch_config.regex_cache).lower()}')
     logger.info(f'Mapping cache: {str(watch_config.mapping_cache).lower()}')
+    logger.info(f'Ignored cache: {str(watch_config.ignored_cache).lower()}')
     logger.info(f'Checking processes every {watch_config.check_interval} second(s)')
 
     tf = time.time()

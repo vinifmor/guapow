@@ -1,18 +1,14 @@
 import os
-import re
 from logging import Logger
-from typing import Optional, Dict, Pattern, Tuple, Set
+from typing import Optional, Dict, Tuple
 
 import aiofiles
 
 from guapow import __app_name__
-from guapow.common import steam
 from guapow.common.profile import get_default_profile_name
 from guapow.common.users import is_root_user
-from guapow.common.util import map_only_any_regex, has_any_regex
 
 FILE_NAME = 'watch.map'
-RE_PYTHON_REGEX = re.compile(r'^r:(.+)$')
 
 
 def get_root_file_path() -> str:
@@ -94,81 +90,3 @@ def map_string(string: str) -> Optional[Dict[str, str]]:
 
         if mappings:
             return mappings
-
-
-class RegexMapper:
-
-    RE_TYPE_CMD, RE_TYPE_COMM = 0, 1
-
-    BUILTIN_RE = {'__steam__': (steam.RE_STEAM_CMD, RE_TYPE_CMD)}
-
-    def __init__(self, cache: bool, logger: Logger):
-        self._pattern_cache: Optional[dict] = None
-        self._no_pattern_cache: Optional[Set] = None
-
-        if cache:
-            self._pattern_cache, self._no_pattern_cache = {}, set()
-
-        self._log = logger
-
-    def get_cached_pattern(self, str_pattern: str) -> Optional[re.Pattern]:
-        if self._pattern_cache is not None:
-            return self._pattern_cache.get(str_pattern)
-
-    def is_no_pattern_string_cached(self, string: str) -> bool:
-        return string in self._no_pattern_cache if self._no_pattern_cache is not None else False
-
-    def map(self, mapping: Dict[str, str]) -> Optional[Tuple[Dict[Pattern, str], Dict[Pattern, str]]]:
-        """
-        return: a tuple with two dictionaries: first with cmd patterns and second with comm patterns.
-        """
-        if mapping:
-            cmd, comm = {}, {}
-
-            for string, prof in mapping.items():
-                builtin_pattern = self.BUILTIN_RE.get(string)
-
-                if builtin_pattern:
-                    if builtin_pattern[1] == self.RE_TYPE_CMD:
-                        cmd[builtin_pattern[0]] = prof
-                    elif builtin_pattern[1] == self.RE_TYPE_COMM:
-                        comm[builtin_pattern[0]] = prof
-                    else:
-                        self._log.error(f"Unknown type of built-in pattern '{string}'. It will be ignored.")
-
-                    continue
-
-                if self.is_no_pattern_string_cached(string):
-                    continue
-
-                pattern = self.get_cached_pattern(string)
-                cached = bool(pattern)
-
-                if not cached:
-                    python_regex = RE_PYTHON_REGEX.findall(string)
-
-                    if python_regex:
-                        try:
-                            pattern = re.compile('^{}$'.format(python_regex[0]))
-                        except re.error:
-                            self._log.warning(f'Invalid Python regex mapping: {string}')
-                            continue
-
-                    elif has_any_regex(string):
-                        pattern = map_only_any_regex(string)
-                    else:
-                        pattern = None
-
-                if pattern:
-                    if pattern.pattern[1] == '/':
-                        cmd[pattern] = prof
-                    else:
-                        comm[pattern] = prof
-
-                    if not cached and self._pattern_cache is not None:
-                        self._pattern_cache[string] = pattern
-
-                elif self._no_pattern_cache is not None:
-                    self._no_pattern_cache.add(string)
-
-            return cmd, comm
