@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.2.0]
+## [1.2.0] 2022-06-17
 
 ### Features
 - watcher service:
@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     ```
     - this feature is useful if you have general mappings that cover a lot of processes in `watch.map` (e.g: `/usr/bin/*`), but want to ignore specific ones
     - new config property `ignored.cache` to cache all mapped patterns to memory after the first read and skip next I/O calls (default: `false`) 
+
+
+## [1.1.1] 2022-06-08
 
 ### Fixes
 - AMD GPU performance mode not working [#1](https://github.com/vinifmor/guapow/issues/1)
