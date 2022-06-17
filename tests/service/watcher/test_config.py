@@ -57,6 +57,16 @@ class ProcessWatcherConfigTest(TestCase):
         instance.mapping_cache = False
         self.assertTrue(instance.is_valid())
 
+    def test_is_valid__false_when_ignored_cache_is_none(self):
+        instance = ProcessWatcherConfig.default()
+        instance.ignored_cache = None
+        self.assertFalse(instance.is_valid())
+
+    def test_is_valid__true_when_ignored_cache_is_not_none(self):
+        instance = ProcessWatcherConfig.default()
+        instance.ignored_cache = False
+        self.assertTrue(instance.is_valid())
+
     def test_setup_valid_properties__must_set_check_interval_to_1_when_invalid(self):
         instance = ProcessWatcherConfig.empty()
         instance.check_interval = -1
@@ -74,6 +84,12 @@ class ProcessWatcherConfigTest(TestCase):
         self.assertIsNone(instance.mapping_cache)
         instance.setup_valid_properties()
         self.assertEqual(False, instance.mapping_cache)
+
+    def test_setup_valid_properties__must_set_ignored_cache_to_false_when_invalid(self):
+        instance = ProcessWatcherConfig.empty()
+        self.assertIsNone(instance.ignored_cache)
+        instance.setup_valid_properties()
+        self.assertEqual(False, instance.ignored_cache)
 
     @patch(f'{__app_name__}.service.watcher.config.os.path.isfile', return_value=True)
     def test_get_by_path_by_user__return_etc_path_for_root_user_when_exists(self, isfile: Mock):
@@ -141,6 +157,11 @@ class ProcessWatcherConfigReaderTest(TestCase):
         instance = self.reader.read_valid(f'{RESOURCES_DIR}/watch_mapping_cache.conf')
         self.assertIsInstance(instance, ProcessWatcherConfig)
         self.assertTrue(instance.mapping_cache)
+
+    def test_read_valid__must_return_an_instance_with_valid_ignored_cache_defined(self):
+        instance = self.reader.read_valid(f'{RESOURCES_DIR}/watch_ignored_cache.conf')
+        self.assertIsInstance(instance, ProcessWatcherConfig)
+        self.assertTrue(instance.ignored_cache)
 
     def test_read_valid__must_return_default_config_when_no_path_is_defined(self):
         instance = self.reader.read_valid(None)

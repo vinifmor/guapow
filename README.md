@@ -48,6 +48,7 @@
     - [Watcher service](#watcher)
         - [Mapping patterns](#watch_patterns)
         - [Built-in patterns (steam)](#watch_builtin)
+        - [Ignoring processes](#watch_ignore)
         - [Settings](#watch_settings)
     - [CLI](#cli)
 7. [Improving optimizations timing](#improve_opt)
@@ -517,13 +518,24 @@ makepkg -si
     - <a name="watch_builtin">**Built-in patterns:**<a/>
         - Pre-defined words following the pattern `__word__` that are evaulated as a regex.
             - `__steam__`: defines a regex for any game launched through **Steam** (native and Proton). Example [here](#tutorial_steam).
-    
+
+- <a name="watch_ignore">Ignoring processes:</a> it is possible to define patterns to ignore specific processes through the file `~/.config/guapow/watch.ignore` (user) (or `/etc/guapow/watch.ignore` (system)). Preference: user > system (if running as **root**, system is the only option).
+    - this file follows the same mapping rules as `watch.map`, but you don't need to provide the profile names (as it makes no sense). e.g:
+        ```
+        my_app_name
+        my_app_name*  
+        /bin/my_proc
+        r:/bin/.+/xpto
+       ```
+    - this feature is useful if you have general mappings that cover a lot of processes in `watch.map` (e.g: `/usr/bin/*`), but want to ignore specific ones
+  
 - <a name="watch_settings">Settings</a>
     - Defined at the file `~/.config/guapow/watch.conf` (user) or `/etc/guapow/watch.conf` (system). Preference: user > system (if running as **root**, system is the only option).
         ```
            interval = 1 (in seconds to check for new-born applications and request optimizations)
            regex.cache = true (caches pre-compiled regex mapping patterns in memory)
-           mapping.cache = false (if 'true', caches the all mapping in memory to skip I/O calls. Changes to the mapping file won't take effect.
+           mapping.cache = false (if 'true', caches the all mapping in memory to skip I/O calls. Changes to watch.map won't have effect until the service is restarted.
+           ignored.cache = false (if 'true', caches the all ignored patterns in memory to skip I/O calls. Changes to watch.ignore won't have effect until the service is restarted.
         ```
 
 - Logs:
