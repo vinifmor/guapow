@@ -26,3 +26,4 @@ MeowMotors.exe=MeowMotors-Win6  # Meow Motors
 ShadowOfTheTombRaider.sh=c%*/ShadowOfTheTombRaider  # Shadow Of The Tomb Raider (native)
 Raji.exe=Raji-Win64-Ship  # Raji: an ancient epic
 start_protected_game.exe*=MultiVersus-Win  # MultiVersus
+Mordhau.exe=CrRendererMain  # Mordhau
