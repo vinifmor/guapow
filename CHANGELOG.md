@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.1]
+### Fixes
+- Performance mode not being activated for some AMD GPUs (tested on kernels >= 5.15)
+
 ## [1.2.0] 2022-06-17
 
 ### Features

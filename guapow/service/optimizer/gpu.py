@@ -199,6 +199,7 @@ class AMDGPUDriver(GPUDriver):
         super(AMDGPUDriver, self).__init__(cache, logger)
         self._gpus_path = gpus_path
         self._re_gpu_id: Optional[Pattern] = None
+        self._re_power_mode: Optional[Pattern] = None
 
     @classmethod
     def get_vendor_name(cls) -> str:
@@ -206,6 +207,13 @@ class AMDGPUDriver(GPUDriver):
 
     def can_work(self) -> Tuple[bool, Optional[str]]:
         return True, None
+
+    @property
+    def re_power_mode(self) -> Pattern:
+        if not self._re_power_mode:
+            self._re_power_mode = re.compile(r'^\w+\*:?$')
+
+        return self._re_power_mode
 
     async def get_gpus(self) -> Optional[Set[str]]:
         required_files = {self.PERFORMANCE_FILE: set(), self.PROFILE_FILE: set()}
@@ -245,10 +253,11 @@ class AMDGPUDriver(GPUDriver):
     def _map_power_mode_output(self, output: str, file_path: str) -> Optional[str]:
         if output is not None:
             for raw_line in output.split('\n'):
-                line = raw_line.strip().split(' ')
+                if raw_line.startswith(' '):
+                    line = raw_line.strip().split(' ')
 
-                if len(line) > 1 and line[-1].endswith('*'):
-                    return line[0].strip()
+                    if len(line) > 1 and line[0].isdigit() and self.re_power_mode.match(line[-1]):
+                        return line[0].strip()
 
             content_log = output.replace('\n', ' ')
             self._log.error(f"Could not map the {self.get_vendor_name()} power mode from {file_path}. "
