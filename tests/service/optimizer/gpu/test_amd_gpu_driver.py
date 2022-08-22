@@ -9,7 +9,7 @@ from guapow.service.optimizer.gpu import AMDGPUDriver
 from tests import RESOURCES_DIR
 
 TEST_GPU_FOLDER = RESOURCES_DIR + '/amd/gpu/card{id}/device'
-TEMP_GPU_FOLDER = TEST_GPU_FOLDER.format(id=4)
+TEMP_GPU_FOLDER = TEST_GPU_FOLDER.format(id=5)
 
 
 class AMDGPUDriverTest(IsolatedAsyncioTestCase):
@@ -51,19 +51,20 @@ class AMDGPUDriverTest(IsolatedAsyncioTestCase):
         returned = await driver.get_gpus()
         self.assertIsNotNone(returned)
 
-        expected = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3)}
+        expected = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3, 4)}
         self.assertEqual(expected, returned)
 
     async def test_get_power_mode__return_a_string_concatenating_the_performance_and_profile_ids(self):
         driver = AMDGPUDriver(cache=False, logger=Mock(), gpus_path=TEST_GPU_FOLDER)
 
-        gpu_dirs = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3)}
+        gpu_dirs = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3, 4)}
         actual_modes = await driver.get_power_mode(gpu_dirs)
 
         expected = {
             TEST_GPU_FOLDER.format(id=1): 'manual:3',
             TEST_GPU_FOLDER.format(id=2): 'manual:5',
-            TEST_GPU_FOLDER.format(id=3): 'auto:5'
+            TEST_GPU_FOLDER.format(id=3): 'auto:5',
+            TEST_GPU_FOLDER.format(id=4): 'auto:0'
         }
         self.assertEqual(expected, actual_modes)
 
