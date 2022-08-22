@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixes
 - Performance mode not being activated for AMD GPUs from the RX 6XX0 series (tested on kernels >= 5.15)
 
+### Improvements
+- removed unused code
+
 ## [1.2.0] 2022-06-17
 
 ### Features

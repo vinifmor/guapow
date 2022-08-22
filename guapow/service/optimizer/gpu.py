@@ -198,7 +198,6 @@ class AMDGPUDriver(GPUDriver):
     def __init__(self, cache: bool, logger: Logger, gpus_path: str = '/sys/class/drm/card{id}/device'):
         super(AMDGPUDriver, self).__init__(cache, logger)
         self._gpus_path = gpus_path
-        self._re_gpu_id: Optional[Pattern] = None
         self._re_power_mode: Optional[Pattern] = None
 
     @classmethod
