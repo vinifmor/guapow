@@ -297,7 +297,7 @@ class AMDGPUDriver(GPUDriver):
             -> Optional[Dict[str, str]]:
         if gpu_ids:
             res = {}
-            await asyncio.gather(*tuple(self._fill_power_mode(id_, res) for id_ in gpu_ids))
+            await asyncio.gather(*tuple(asyncio.create_task(self._fill_power_mode(id_, res)) for id_ in gpu_ids))
             return res if res else None
 
     async def _write_to_file(self, file_path: str, content: str) -> bool:
@@ -317,7 +317,7 @@ class AMDGPUDriver(GPUDriver):
                              user_environment: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
         res = {}
         if ids_modes:
-            coros, writes = [], dict()
+            tasks, writes = [], dict()
             for id_, mode_str in ids_modes.items():
                 mode = mode_str.split(':')
 
@@ -326,10 +326,12 @@ class AMDGPUDriver(GPUDriver):
                     self._log.info(f"Changing {self.get_vendor_name()} GPU ({gpu_dir}) operation mode "
                                    f"(performance: {mode[0]}, profile: {mode[1]})")
                     writes[id_] = list()
-                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], id_, writes))
-                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}', mode[1], id_, writes))
+                    tasks.append(asyncio.create_task(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}',
+                                                                             mode[0], id_, writes)))
+                    tasks.append(asyncio.create_task(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}',
+                                                                             mode[1], id_, writes)))
 
-            await asyncio.gather(*coros)
+            await asyncio.gather(*tasks)
 
             for id_ in ids_modes:
                 gpu_writes = writes.get(id_)
