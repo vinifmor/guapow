@@ -199,6 +199,7 @@ class AMDGPUDriver(GPUDriver):
         super(AMDGPUDriver, self).__init__(cache, logger)
         self._gpus_path = gpus_path
         self._re_power_mode: Optional[Pattern] = None
+        self._re_extract_id: Optional[Pattern] = None
 
     @classmethod
     def get_vendor_name(cls) -> str:
@@ -213,6 +214,14 @@ class AMDGPUDriver(GPUDriver):
             self._re_power_mode = re.compile(r'^\w+\*:?$')
 
         return self._re_power_mode
+
+    @property
+    def re_extract_id(self) -> Pattern:
+        if not self._re_extract_id:
+            gen_pattern = re.compile(r'/\w+{id}').findall(self._gpus_path)[0].replace('{id}', r'(\d+)')
+            self._re_extract_id = re.compile(gen_pattern)
+
+        return self._re_extract_id
 
     async def get_gpus(self) -> Optional[Set[str]]:
         required_files = {self.PERFORMANCE_FILE: set(), self.PROFILE_FILE: set()}
@@ -237,7 +246,11 @@ class AMDGPUDriver(GPUDriver):
                         all_files_available = False
 
                 if all_files_available:
-                    gpus.add(gpu_dir)
+                    try:
+                        gpus.add(self.re_extract_id.findall(gpu_dir)[0])
+                    except IndexError:
+                        self._log.error(f"[{self.__class__.__name__}] Could not extract AMD GPU id from directory: "
+                                        f"{gpu_dir}")
 
             return gpus if gpus else None
 
@@ -263,14 +276,15 @@ class AMDGPUDriver(GPUDriver):
                             f"Content: {content_log}")
 
     async def _fill_power_mode(self, gpu_id: str, gpu_modes: Dict[str, str]):
-        control_file = f'{gpu_id}/{self.PERFORMANCE_FILE}'
+        gpu_dir = self._gpus_path.format(id=gpu_id)
+        control_file = f'{gpu_dir}/{self.PERFORMANCE_FILE}'
         control_type = await self._read_file(control_file)
         self._log.debug(f"{self.get_vendor_name()} GPU file ({control_file}): {control_type}")
 
         if not control_type:
             return
 
-        power_file = f'{gpu_id}/{self.PROFILE_FILE}'
+        power_file = f'{gpu_dir}/{self.PROFILE_FILE}'
         power_mode = self._map_power_mode_output(await self._read_file(power_file), power_file)
         self._log.debug(f"{self.get_vendor_name()} GPU file ({power_file}): {power_mode}")
 
@@ -283,7 +297,7 @@ class AMDGPUDriver(GPUDriver):
             -> Optional[Dict[str, str]]:
         if gpu_ids:
             res = {}
-            await asyncio.gather(*tuple(self._fill_power_mode(gpu_id, res) for gpu_id in gpu_ids))
+            await asyncio.gather(*tuple(self._fill_power_mode(id_, res) for id_ in gpu_ids))
             return res if res else None
 
     async def _write_to_file(self, file_path: str, content: str) -> bool:
@@ -304,22 +318,22 @@ class AMDGPUDriver(GPUDriver):
         res = {}
         if ids_modes:
             coros, writes = [], dict()
-            for gpu_dir, mode_str in ids_modes.items():
+            for id_, mode_str in ids_modes.items():
                 mode = mode_str.split(':')
 
                 if len(mode) == 2:
+                    gpu_dir = self._gpus_path.format(id=id_)
                     self._log.info(f"Changing {self.get_vendor_name()} GPU ({gpu_dir}) operation mode "
                                    f"(performance: {mode[0]}, profile: {mode[1]})")
-                    writes[gpu_dir] = list()
-                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], gpu_dir,
-                                                         writes))
-                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}', mode[1], gpu_dir, writes))
+                    writes[id_] = list()
+                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], id_, writes))
+                    coros.append(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}', mode[1], id_, writes))
 
             await asyncio.gather(*coros)
 
-            for gpu_dir in ids_modes:
-                gpu_writes = writes.get(gpu_dir)
-                res[gpu_dir] = gpu_writes and all(gpu_writes)
+            for id_ in ids_modes:
+                gpu_writes = writes.get(id_)
+                res[id_] = gpu_writes and all(gpu_writes)
 
         return res
 

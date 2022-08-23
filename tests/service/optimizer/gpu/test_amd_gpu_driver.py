@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import sys
 import traceback
@@ -51,20 +52,19 @@ class AMDGPUDriverTest(IsolatedAsyncioTestCase):
         returned = await driver.get_gpus()
         self.assertIsNotNone(returned)
 
-        expected = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3, 4)}
-        self.assertEqual(expected, returned)
+        self.assertEqual({'1', '2', '3', '4'}, returned)
 
     async def test_get_power_mode__return_a_string_concatenating_the_performance_and_profile_ids(self):
         driver = AMDGPUDriver(cache=False, logger=Mock(), gpus_path=TEST_GPU_FOLDER)
 
-        gpu_dirs = {TEST_GPU_FOLDER.format(id=n) for n in (1, 2, 3, 4)}
-        actual_modes = await driver.get_power_mode(gpu_dirs)
+        gpu_ids = {str(n) for n in range(1, 5)}
+        actual_modes = await driver.get_power_mode(gpu_ids)
 
         expected = {
-            TEST_GPU_FOLDER.format(id=1): 'manual:3',
-            TEST_GPU_FOLDER.format(id=2): 'manual:5',
-            TEST_GPU_FOLDER.format(id=3): 'auto:5',
-            TEST_GPU_FOLDER.format(id=4): 'auto:0'
+            '1': 'manual:3',
+            '2': 'manual:5',
+            '3': 'auto:5',
+            '4': 'auto:0'
         }
         self.assertEqual(expected, actual_modes)
 
@@ -76,8 +76,10 @@ class AMDGPUDriverTest(IsolatedAsyncioTestCase):
             self.fail(f"Could not copy example folder '{example_folder}'")
 
         driver = AMDGPUDriver(cache=False, logger=Mock(), gpus_path=TEST_GPU_FOLDER)
-        res = await driver.set_power_mode({TEMP_GPU_FOLDER: driver.get_performance_mode()})
-        self.assertEqual({TEMP_GPU_FOLDER: True}, res)
+        card_id = re.compile(r'\d+').findall(TEMP_GPU_FOLDER)[0]
+
+        res = await driver.set_power_mode({card_id: driver.get_performance_mode()})
+        self.assertEqual({card_id: True}, res)
 
         with open(f'{TEMP_GPU_FOLDER}/{AMDGPUDriver.PERFORMANCE_FILE}') as f:
             control_mode = f.read()
