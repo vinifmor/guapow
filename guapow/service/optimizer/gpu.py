@@ -218,8 +218,7 @@ class AMDGPUDriver(GPUDriver):
     @property
     def re_extract_id(self) -> Pattern:
         if not self._re_extract_id:
-            gen_pattern = re.compile(r'/\w+{id}').findall(self._gpus_path)[0].replace('{id}', r'(\d+)')
-            self._re_extract_id = re.compile(gen_pattern)
+            self._re_extract_id = re.compile(self._gpus_path.replace('{id}', r'(\d+)'))
 
         return self._re_extract_id
 

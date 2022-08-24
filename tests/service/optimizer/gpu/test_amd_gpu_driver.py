@@ -76,7 +76,7 @@ class AMDGPUDriverTest(IsolatedAsyncioTestCase):
             self.fail(f"Could not copy example folder '{example_folder}'")
 
         driver = AMDGPUDriver(cache=False, logger=Mock(), gpus_path=TEST_GPU_FOLDER)
-        card_id = re.compile(r'\d+').findall(TEMP_GPU_FOLDER)[0]
+        card_id = re.compile(r'/card(\d+)/device$').findall(TEMP_GPU_FOLDER)[0]
 
         res = await driver.set_power_mode({card_id: driver.get_performance_mode()})
         self.assertEqual({card_id: True}, res)
