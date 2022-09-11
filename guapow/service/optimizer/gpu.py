@@ -256,12 +256,12 @@ class AMDGPUDriver(GPUDriver):
     async def _read_file(self, file_path: str) -> Optional[str]:
         try:
             async with aiofiles.open(file_path) as f:
-                return (await f.read()).strip()
+                return await f.read()
         except:
             err_stack = traceback.format_exc().replace('\n', ' ')
             self._log.error(f"[{self.__class__.__name__}] Could not read file '{file_path}': {err_stack}")
 
-    def _map_power_mode_output(self, output: str, file_path: str) -> Optional[str]:
+    def _map_power_profile_output(self, output: str, file_path: str) -> Optional[str]:
         if output is not None:
             for raw_line in output.split('\n'):
                 if raw_line.startswith(' '):
@@ -271,26 +271,26 @@ class AMDGPUDriver(GPUDriver):
                         return line[0].strip()
 
             content_log = output.replace('\n', ' ')
-            self._log.error(f"Could not map the {self.get_vendor_name()} power mode from {file_path}. "
+            self._log.error(f"Could not map the {self.get_vendor_name()} power profile from {file_path}. "
                             f"Content: {content_log}")
 
     async def _fill_power_mode(self, gpu_id: str, gpu_modes: Dict[str, str]):
         gpu_dir = self._gpus_path.format(id=gpu_id)
-        control_file = f'{gpu_dir}/{self.PERFORMANCE_FILE}'
-        control_type = await self._read_file(control_file)
-        self._log.debug(f"{self.get_vendor_name()} GPU file ({control_file}): {control_type}")
+        performance_level_file = f"{gpu_dir}/{self.PERFORMANCE_FILE}"
+        performance_level = (await self._read_file(performance_level_file)).strip()
+        self._log.debug(f"{self.get_vendor_name()} GPU file ({performance_level_file}): {performance_level}")
 
-        if not control_type:
+        if not performance_level:
             return
 
-        power_file = f'{gpu_dir}/{self.PROFILE_FILE}'
-        power_mode = self._map_power_mode_output(await self._read_file(power_file), power_file)
-        self._log.debug(f"{self.get_vendor_name()} GPU file ({power_file}): {power_mode}")
+        power_profile_file = f"{gpu_dir}/{self.PROFILE_FILE}"
+        power_profile = self._map_power_profile_output(await self._read_file(power_profile_file), power_profile_file)
+        self._log.debug(f"{self.get_vendor_name()} GPU file ({power_profile_file}): {power_profile}")
 
-        if not power_mode:
+        if not power_profile:
             return
 
-        gpu_modes[gpu_id] = f'{control_type}:{power_mode}'
+        gpu_modes[gpu_id] = f"{performance_level}:{power_profile}"
 
     async def get_power_mode(self, gpu_ids: Set[str], user_environment: Optional[Dict[str, str]] = None) \
             -> Optional[Dict[str, str]]:
@@ -322,11 +322,15 @@ class AMDGPUDriver(GPUDriver):
 
                 if len(mode) == 2:
                     gpu_dir = self._gpus_path.format(id=id_)
-                    self._log.info(f"Changing {self.get_vendor_name()} GPU ({gpu_dir}) operation mode "
+                    self._log.info(f"Changing {self.get_vendor_name()} GPU ({id_}) operation mode "
                                    f"(performance: {mode[0]}, profile: {mode[1]})")
                     writes[id_] = list()
                     coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], id_, writes))
                     coros.append(self._fill_write_result(f'{gpu_dir}/{self.PROFILE_FILE}', mode[1], id_, writes))
+                else:
+                    self._log.error(f"Could not change {self.get_vendor_name()} GPU operation mode: "
+                                    f"unexpected mode format '{mode_str}' "
+                                    f"(expected: 'performance_level:power_profile'")
 
             await asyncio.gather(*coros)
 

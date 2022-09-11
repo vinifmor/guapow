@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.2.2]
 ### Improvements
-- Minor code refactoring
+- Minor code refactoring and log improvements regarding AMD GPU management
 
 ## [1.2.1] 2022-08-22
 ### Fixes
