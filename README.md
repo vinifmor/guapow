@@ -466,7 +466,7 @@ makepkg -si
         port = 5087 (TCP port)
         compositor = (pre-defines the installed compositor. Options: kwin, compiz, marco, picom, compton, nvidia)
         scripts.allow_root = false (allow custom scripts/commands to run at the root level)
-        check.finished.interval = 3 (finished applications checking interval in seconds)
+        check.finished.interval = 3 (finished applications checking interval in seconds. Min accepted value: 0.5)
         launcher.mapping.timeout = 30 (max time in seconds to find the application mapped to a given launcher. float values are allowed)
         gpu.cache = false (if 'true': maps all available GPUs on startup. Otherwise, GPUs will be mapped for every request)
         gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd

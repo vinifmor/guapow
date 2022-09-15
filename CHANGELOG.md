@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.2.2]
+## [NEXT]
 ### Improvements
 - Minor code refactoring and log improvements regarding AMD GPU management
+- Optimizer:
+  - configuration property `check.finished.interval` now accepts floats and the minimum value accepted is `0.5`.
 
 ## [1.2.1] 2022-08-22
 ### Fixes

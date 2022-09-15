@@ -78,7 +78,7 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         file_path = f'{RESOURCES_DIR}/opt_check_finished_interval.conf'
         config = await self.reader.read_valid(file_path=file_path)
         self.assertIsNotNone(config)
-        self.assertEqual(1, config.check_finished_interval)
+        self.assertEqual(0.5, config.check_finished_interval)
 
     async def test_read_valid__return_instance_with_valid_check_finished_interval_value_for_invalid_definition(self):
         file_path = f'{RESOURCES_DIR}/opt_invalid_check_interval.conf'

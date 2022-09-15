@@ -73,7 +73,7 @@ class OptimizerConfig(RootFileModel):
     FILE_MAPPING = {'port': ('port', int, None),
                     'compositor': ('compositor', str, None),
                     'scripts.allow_root': ('allow_root_scripts', bool, True),
-                    'check.finished.interval': ('check_finished_interval', int, None),
+                    'check.finished.interval': ('check_finished_interval', float, None),
                     'launcher.mapping.timeout': ('launcher_mapping_timeout', float, None),
                     'gpu.cache': ('gpu_cache', bool, True),
                     'gpu.vendor': ('gpu_vendor', str, None),
@@ -84,7 +84,7 @@ class OptimizerConfig(RootFileModel):
 
     def __init__(self, port: Optional[int] = None, compositor: Optional[str] = None,
                  allow_root_scripts: Optional[bool] = False,
-                 check_finished_interval: Optional[int] = None, launcher_mapping_timeout: Optional[float] = 30,
+                 check_finished_interval: Optional[float] = None, launcher_mapping_timeout: Optional[float] = 30,
                  gpu_cache: Optional[bool] = False, cpu_performance: Optional[bool] = None,
                  profile_cache: Optional[bool] = None, pre_cache_profiles: Optional[bool] = None,
                  gpu_vendor: Optional[str] = None, renicer_interval: Optional[float] = None):
@@ -127,7 +127,7 @@ class OptimizerConfig(RootFileModel):
         return self.launcher_mapping_timeout is not None and self.launcher_mapping_timeout >= 0
 
     def has_valid_check_finished_interval(self) -> bool:
-        return self.check_finished_interval is not None and self.check_finished_interval > 0
+        return self.check_finished_interval is not None and self.check_finished_interval >= 0.5
 
     def has_valid_renicer_interval(self) -> bool:
         return self.renicer_interval is not None and self.renicer_interval > 0
