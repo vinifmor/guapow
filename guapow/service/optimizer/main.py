@@ -74,7 +74,7 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
 
         if gpu_driver:
             logger.info(f'Pre-defined GPU vendor: {opt_config.gpu_vendor}')
-            gpu_drivers = [gpu_driver(cache=opt_config.gpu_cache, logger=logger)]
+            gpu_drivers = (gpu_driver(cache=opt_config.gpu_cache, logger=logger),)
         else:
             logger.warning(f'Invalid pre-defined GPU vendor: {opt_config.gpu_vendor}')
 

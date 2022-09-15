@@ -67,7 +67,7 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver_1.can_work = Mock(return_value=(True, None))
         driver_1.get_gpus = AsyncMock(return_value={'0'})
 
-        man = GPUManager(Mock(), drivers=[driver_1], cache_gpus=True)
+        man = GPUManager(Mock(), drivers=(driver_1,), cache_gpus=True)
         self.assertIsNone(man.get_cached_working_drivers())
 
         async def mock_map_working_drivers() -> List[Tuple[GPUDriver, Set[str]]]:
@@ -79,7 +79,7 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         for res in tasks_res:
             self.assertEqual([(driver_1, {'0'})], res)
 
-        self.assertEqual([driver_1], man.get_cached_working_drivers())
+        self.assertEqual((driver_1,), man.get_cached_working_drivers())
         driver_1.can_work.assert_called_once()  # only one call when cache is on  (even for concurrent requests)
         driver_1.get_gpus.assert_called_once()  # only one call when cache is on (even for concurrent requests)
 
