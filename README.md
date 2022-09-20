@@ -539,7 +539,7 @@ makepkg -si
         ```
 
 - Logs:
-    - Logs are managed through the environemnt variables:
+    - Logs are managed through the environment variables:
         - `GUAPOW_WATCH_LOG`: enables/disables logs. Options: **1** (enables, default), **0** (disables).
         - `GUAPOW_WATCH_LOG_LEVEL`: controls the type of logging that should be printed. Options: `info`, `debug`, `error` and `warning` (`debug` is the most detailed type). Default: `info`.
     - If the **watcher** is running as a service, these variables can be changed on the definition file (`~.config/systemd/user/guapow-watch.service`)
