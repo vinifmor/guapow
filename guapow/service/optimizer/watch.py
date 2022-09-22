@@ -12,7 +12,7 @@ from guapow.service.optimizer.task.model import OptimizedProcess, OptimizationCo
 
 class DeadProcessWatcher:
 
-    def __init__(self, context: OptimizationContext, restore_man: PostProcessTaskManager, check_interval: int, to_watch: Optional[List[OptimizedProcess]] = None,
+    def __init__(self, context: OptimizationContext, restore_man: PostProcessTaskManager, check_interval: float, to_watch: Optional[List[OptimizedProcess]] = None,
                  to_relaunch: Optional[Dict[str, str]] = None):
         self._context = context
         self._check_interval = check_interval
@@ -121,8 +121,11 @@ class DeadProcessWatcher:
 
 class DeadProcessWatcherManager:
 
-    def __init__(self, check_interval: int, restore_man: PostProcessTaskManager, context: OptimizationContext):
-        self._watcher = DeadProcessWatcher(context=context, check_interval=check_interval, restore_man=restore_man, to_relaunch={})
+    def __init__(self, check_interval: float, restore_man: PostProcessTaskManager, context: OptimizationContext):
+        self._watcher = DeadProcessWatcher(context=context,
+                                           check_interval=check_interval,
+                                           restore_man=restore_man,
+                                           to_relaunch={})
 
     async def watch(self, process: OptimizedProcess):
         if process:

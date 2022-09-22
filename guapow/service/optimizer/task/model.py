@@ -19,7 +19,8 @@ class OptimizationContext:
                  mouse_man: Optional[MouseCursorManager], queue: Optional[OptimizationQueue], cpu_count: int,
                  launcher_mapping_timeout: float, renicer_interval: float,
                  compositor: Optional[WindowCompositor] = None,  allow_root_scripts: bool = False,
-                 compositor_disabled_context: Optional[dict] = None):
+                 compositor_disabled_context: Optional[dict] = None,
+                 system_service: bool = False, gpu_ids: Optional[Set[str]] = None):
 
         self.queue = queue
         self.gpu_man = gpu_man
@@ -33,6 +34,8 @@ class OptimizationContext:
         self.launcher_mapping_timeout = launcher_mapping_timeout
         self.compositor_disabled_context = compositor_disabled_context  # if the compositor was disabled by the Optimizer
         self.renicer_interval = renicer_interval
+        self.system_service = system_service
+        self.gpu_ids = gpu_ids
 
     @classmethod
     def empty(cls) -> "OptimizationContext":

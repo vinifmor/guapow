@@ -39,8 +39,12 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     getLogger('aiohttp.server').disabled = True
 
     is_service = OptimizerConfig.is_service()
+
     logger = new_logger(name=f'{__app_name__}-opt', service=is_service, enabled=OptimizerConfig.is_log_enabled(),
                         write_to_file=False, level=OptimizerConfig.get_log_level())
+    if is_service:
+        logger.debug("Initializing as a system service")
+
     user_id, user_name = os.getuid(), getpass.getuser()
     logger.debug(f"Initializing as user '{user_name}' (pid={os.getpid()})")
 
@@ -50,9 +54,6 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     logger.info(f"Nice levels monitoring interval: {opt_config.renicer_interval} seconds")
     logger.info(f'Finished process checking interval: {opt_config.check_finished_interval} seconds')
     logger.info(f'Launcher mapping timeout: {opt_config.launcher_mapping_timeout} seconds')
-
-    if not opt_config.gpu_cache:
-        logger.warning("Available GPUs cache is disabled. Available GPUs will be mapped for every request")
 
     if opt_config.allow_root_scripts:
         logger.warning("Scripts are allowed to run at root level")
@@ -74,9 +75,15 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
 
         if gpu_driver:
             logger.info(f'Pre-defined GPU vendor: {opt_config.gpu_vendor}')
-            gpu_drivers = [gpu_driver(cache=opt_config.gpu_cache, logger=logger)]
+            gpu_drivers = (gpu_driver(cache=opt_config.gpu_cache, logger=logger),)
         else:
             logger.warning(f'Invalid pre-defined GPU vendor: {opt_config.gpu_vendor}')
+
+    if opt_config.gpu_ids:
+        logger.info(f"Target GPU ids to be optimized: {', '.join(str(i) for i in sorted(opt_config.gpu_ids))}")
+
+    if not opt_config.gpu_cache:
+        logger.warning("Available GPUs cache is disabled. Available GPUs will be mapped for every request")
 
     gpu_man = GPUManager(cache_gpus=opt_config.gpu_cache, logger=logger, drivers=gpu_drivers)
 
@@ -87,7 +94,9 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
                                   compositor=compositor, allow_root_scripts=bool(opt_config.allow_root_scripts),
                                   launcher_mapping_timeout=opt_config.launcher_mapping_timeout,
                                   mouse_man=MouseCursorManager(logger), renicer_interval=opt_config.renicer_interval,
-                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue.empty())
+                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue.empty(),
+                                  system_service=opt_config.is_service(),
+                                  gpu_ids={str(i) for i in opt_config.gpu_ids} if opt_config.gpu_ids else None)
 
     watcher_man = DeadProcessWatcherManager(context=context, restore_man=PostProcessTaskManager(context),
                                             check_interval=opt_config.check_finished_interval)

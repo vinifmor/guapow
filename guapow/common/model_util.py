@@ -136,6 +136,25 @@ class IntListPropertyMapper(FileModelCollectionPropertyMapper):
         return list
 
 
+class IntSetPropertyMapper(FileModelCollectionPropertyMapper):
+
+    def supports(self, prop_type: type) -> bool:
+        return prop_type == Set[int]
+
+    def map(self, prop_val: str, prop_type: type) -> Optional[Set[int]]:
+        return {int(n) for n in prop_val.split(',') if n.isdigit()}
+
+    def create_collection(self) -> object:
+        return set()
+
+    def update_collection(self, collection: object, update: object):
+        if isinstance(collection, set) and isinstance(update, set):
+            collection.update(update)
+
+    def get_raw_type(self) -> type:
+        return set
+
+
 class StringListPropertyMapper(FileModelCollectionPropertyMapper):
 
     def supports(self, prop_type: type) -> bool:

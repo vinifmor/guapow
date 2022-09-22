@@ -58,12 +58,12 @@ class OptimizerConfigTest(TestCase):
         config = OptimizerConfig(65536)
         self.assertFalse(config.has_valid_port())
 
-    def test_has_valid_check_finished_interval__true_when_higher_than_zero(self):
-        config = OptimizerConfig(check_finished_interval=1)
+    def test_has_valid_check_finished_interval__true_when_higher_or_equal_point_five(self):
+        config = OptimizerConfig(check_finished_interval=0.5)
         self.assertTrue(config.has_valid_check_finished_interval())
 
-    def test_has_valid_check_finished_interval__false_when_zero(self):
-        config = OptimizerConfig(check_finished_interval=0)
+    def test_has_valid_check_finished_interval__false_when_less_than_point_five(self):
+        config = OptimizerConfig(check_finished_interval=0.49)
         self.assertFalse(config.has_valid_check_finished_interval())
 
     def test_has_valid_check_finished_interval__false_when_negative(self):

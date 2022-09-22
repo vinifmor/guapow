@@ -29,6 +29,7 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(config.request)
         self.assertTrue(config.request.encrypted)
         self.assertIsNone(config.request.allowed_users)
+        self.assertIsNone(config.gpu_ids)
 
     async def test_read_valid__return_valid_instance_when_file_does_not_exist(self):
         file_path = f'{RESOURCES_DIR}/123opt.conf'
@@ -78,7 +79,7 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         file_path = f'{RESOURCES_DIR}/opt_check_finished_interval.conf'
         config = await self.reader.read_valid(file_path=file_path)
         self.assertIsNotNone(config)
-        self.assertEqual(1, config.check_finished_interval)
+        self.assertEqual(0.5, config.check_finished_interval)
 
     async def test_read_valid__return_instance_with_valid_check_finished_interval_value_for_invalid_definition(self):
         file_path = f'{RESOURCES_DIR}/opt_invalid_check_interval.conf'
@@ -156,3 +157,17 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(config)
         self.assertTrue(config.is_valid())
         self.assertEqual(5, config.renicer_interval)  # default value is 5
+
+    async def test_read_valid__return_instance_with_valid_gpu_targets(self):
+        file_path = f'{RESOURCES_DIR}/opt_gpu_ids.conf'
+        config = await self.reader.read_valid(file_path=file_path)
+        self.assertIsNotNone(config)
+        self.assertTrue(config.is_valid())
+        self.assertEqual({1, 2, 3}, config.gpu_ids)
+
+    async def test_read_valid__return_instance_with_no_gpu_target_when_invalid_definition(self):
+        file_path = f'{RESOURCES_DIR}/opt_gpu_ids_invalid.conf'
+        config = await self.reader.read_valid(file_path=file_path)
+        self.assertIsNotNone(config)
+        self.assertTrue(config.is_valid())
+        self.assertIsNone(config.gpu_ids)
