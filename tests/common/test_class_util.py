@@ -3,7 +3,7 @@ from unittest import TestCase
 from guapow.common import class_util
 from guapow.common.model_util import FileModelPropertyMapper, StringPropertyMapper, IntPropertyMapper, \
     FloatPropertyMapper, BoolPropertyMapper, StringListPropertyMapper, IntListPropertyMapper, CustomEnumPropertyMapper, \
-    DictPropertyMapper, StringSetPropertyMapper
+    DictPropertyMapper, StringSetPropertyMapper, IntSetPropertyMapper
 
 
 class InstantiateSubclassesTest(TestCase):
@@ -12,9 +12,10 @@ class InstantiateSubclassesTest(TestCase):
         subs = class_util.instantiate_subclasses(FileModelPropertyMapper)
         self.assertIsNotNone(subs)
 
-        self.assertEqual(9, len(subs))
+        self.assertEqual(10, len(subs))
 
         for mtype in {StringPropertyMapper, IntPropertyMapper, FloatPropertyMapper, BoolPropertyMapper,
-                      StringListPropertyMapper, IntListPropertyMapper, StringSetPropertyMapper, CustomEnumPropertyMapper, DictPropertyMapper}:
+                      StringListPropertyMapper, IntListPropertyMapper, StringSetPropertyMapper,
+                      CustomEnumPropertyMapper, DictPropertyMapper, IntSetPropertyMapper}:
             instances = [s for s in subs if isinstance(s, mtype)]
             self.assertEqual(1, len(instances), f"Unexpected number of instances ({len(instances)}) found for {mtype.__name__}")

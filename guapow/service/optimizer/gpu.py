@@ -487,13 +487,36 @@ class GPUManager:
         else:
             self._log.error("No GPU driver instances available")
 
-    async def activate_performance(self, user_environment: Optional[Dict[str, str]] = None) \
+    async def activate_performance(self, user_environment: Optional[Dict[str, str]] = None,
+                                   target_gpu_ids: Optional[Set[str]] = None) \
             -> Optional[Dict[Type[GPUDriver], Set[GPUState]]]:
+        """
+
+        Args:
+            user_environment: user environment variables
+            target_gpu_ids: the target GPU ids to enter in performance mode. If None, all available GPUs will be considered.
+
+        Returns: the GPUs previous states
+
+        """
 
         res = {}
         async for driver, gpus in self.map_working_drivers_and_gpus():
+            if not gpus:
+                continue
+
+            target_gpus = gpus.intersection(target_gpu_ids) if target_gpu_ids else gpus
+
+            if not target_gpus:
+                self._log.debug(f"[{driver.get_vendor_name()} GPU] No valid target GPUs available "
+                                f"to enter in performance mode (valid: {', '.join(sorted(gpus))})")
+                continue
+
             async with driver.lock():
-                gpu_modes = await driver.get_power_mode(gpus, user_environment)
+                if target_gpu_ids and gpus != target_gpu_ids:
+                    self._log.debug(f"Target GPU ids to enter in performance mode: {', '.join(sorted(target_gpus))}")
+
+                gpu_modes = await driver.get_power_mode(target_gpus, user_environment)
                 if gpu_modes:
                     performance_mode = driver.get_performance_mode()
                     async with self._gpu_state_cache_lock:

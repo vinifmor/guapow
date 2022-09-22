@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Improvements
 - Minor code refactoring and log improvements regarding AMD GPU management
 - Optimizer:
-  - configuration property `check.finished.interval` now accepts floats and the minimum value accepted is `0.5`.
+  - configuration property `check.finished.interval` now accepts floats and the minimum value accepted is `0.5`
+  - new configuration property `gpu.id`: allows to define which GPU cards should be optimized (e.g: `gpus.id = 0,1`). If not defined, all available GPUs are considered (default).
+
+### Fixes
+- optimizer:
+  - when running as a system service, sometimes the GPU mapped directories are not available during the system startup and affects the correct behavior of the property `gpu.cache` when it is enabled (`true`)
+     - so now the available GPUs will be cached after a first request when the `optimizer` is running as a system service (otherwise they will be cached normally during the service startup process)
 
 ## [1.2.1] 2022-08-22
 ### Fixes

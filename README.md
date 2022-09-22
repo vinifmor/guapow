@@ -468,7 +468,8 @@ makepkg -si
         scripts.allow_root = false (allow custom scripts/commands to run at the root level)
         check.finished.interval = 3 (finished applications checking interval in seconds. Min accepted value: 0.5)
         launcher.mapping.timeout = 30 (max time in seconds to find the application mapped to a given launcher. float values are allowed)
-        gpu.cache = false (if 'true': maps all available GPUs on startup. Otherwise, GPUs will be mapped for every request)
+        gpu.cache = false (if 'true': maps all available GPUs once after the first request (if running as a system service) or during startup (if not running as system service). Otherwise, GPUs will be mapped for every request)
+        gpu.id = # comma separated list of integers representing which GPU cards should be optimized (e.g: 0, 1). If not defined, all available GPUs are considered (default)
         gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd
         cpu.performance = false  (set cpu governors and energy policy levels to full performance on startup)
         request.allowed_users = (restricts users that can request optimizations, separated by comma. e.g: root,xpto)

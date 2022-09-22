@@ -222,7 +222,8 @@ class ChangeCPUFrequencyGovernorTest(IsolatedAsyncioTestCase):
 class ChangeGPUModeToPerformanceTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
-        self.gpu_man = Mock()
+        self.gpu_man = MagicMock()
+        self.gpu_man.activate_performance = AsyncMock()
 
         self.context = OptimizationContext.empty()
         self.context.gpu_man = self.gpu_man
@@ -241,11 +242,18 @@ class ChangeGPUModeToPerformanceTest(IsolatedAsyncioTestCase):
 
         self.gpu_man.map_working_drivers_and_gpus.assert_called_once()
 
-    async def test_is_available__true_when_gpu_cache_is_off(self):
+    async def test_is_available__true_when_gpu_cache_is_off_and_not_system_service(self):
+        self.context.system_service = False
         self.gpu_man.is_cache_enabled.return_value = False
         self.assertTrue(await self.task.is_available())  # first call
         self.assertTrue(await self.task.is_available())  # second call (ensuring 'is_cache_enabled' is always called)
         self.assertEqual(2, self.gpu_man.is_cache_enabled.call_count)
+
+    async def test_is_available__true_when_gpu_cache_is_off_and_system_service(self):
+        self.context.system_service = True
+        self.gpu_man.is_cache_enabled.return_value = False
+        self.assertTrue(await self.task.is_available())
+        self.assertEqual(0, self.gpu_man.is_cache_enabled.call_count)  # no call count, since system service is on
 
     async def test_should_run__true_when_gpu_profile_performance_is_true(self):
         self.profile.gpu.performance = True
@@ -258,6 +266,18 @@ class ChangeGPUModeToPerformanceTest(IsolatedAsyncioTestCase):
     async def test_should_run__false_when_gpu_profile_performance_is_false(self):
         self.profile.gpu.performance = False
         self.assertFalse(await self.task.should_run(self.process))
+
+    async def test_run__it_should_activate_performance_only_for_target_gpus_in_context(self):
+        self.context.gpu_ids = {'0', '1'}
+        await self.task.run(self.process)
+        self.gpu_man.activate_performance.assert_awaited_once_with(user_environment=self.process.request.user_env,
+                                                                   target_gpu_ids={'0', '1'})
+
+    async def test_run__it_should_activate_performance_for_all_available_gpus(self):
+        self.context.gpu_ids = None
+        await self.task.run(self.process)
+        self.gpu_man.activate_performance.assert_awaited_once_with(user_environment=self.process.request.user_env,
+                                                                   target_gpu_ids=None)
 
 
 class DisableWindowCompositorTest(IsolatedAsyncioTestCase):

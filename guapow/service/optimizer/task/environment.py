@@ -73,17 +73,14 @@ class ChangeGPUModeToPerformance(EnvironmentTask):
 
     def __init__(self, context: OptimizationContext):
         super(ChangeGPUModeToPerformance, self).__init__(context=context)
+        self._context = context
         self._log = context.logger
         self._gpu_man = context.gpu_man
 
-    def check_gpus_for_every_request(self):
-        return not self._gpu_man.is_cache_enabled()
-
     async def is_available(self) -> Tuple[bool, Optional[str]]:
-        if self.check_gpus_for_every_request():
+        if self._context.system_service or not self._gpu_man.is_cache_enabled():
             return True, None
-
-        if await self._list_drivers_with_gpus():
+        elif await self._list_drivers_with_gpus():
             return True, None
         else:
             return False, "No manageable GPUs found"
@@ -96,7 +93,9 @@ class ChangeGPUModeToPerformance(EnvironmentTask):
         return bool(process.profile.gpu and process.profile.gpu.performance)
 
     async def run(self, process: OptimizedProcess):
-        previous_gpu_states = await self._gpu_man.activate_performance(user_environment=process.request.user_env)
+        target_gpu_ids = self._context.gpu_ids if self._context.gpu_ids else None
+        previous_gpu_states = await self._gpu_man.activate_performance(user_environment=process.request.user_env,
+                                                                       target_gpu_ids=target_gpu_ids)
 
         if previous_gpu_states:
             process.previous_gpus_states = previous_gpu_states
