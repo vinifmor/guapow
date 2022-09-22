@@ -183,6 +183,52 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(expected_state_cache, gpu_man.get_gpu_state_cache_view())
 
+    async def test_activate_performance__should_not_try_to_activate_performance_when_target_gpus_dont_match(self):
+        driver_1 = Mock()
+        driver_1.__class__ = GPUDriver
+        driver_1.lock.return_value = Lock()
+        driver_1.can_work.return_value = True, None
+        driver_1.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
+        driver_1.get_cached_gpus = AsyncMock(return_value={'0', '1'})
+        driver_1.get_power_mode = AsyncMock()
+        driver_1.set_power_mode = AsyncMock()
+
+        gpu_man = GPUManager(logger=Mock(), drivers=[driver_1])
+        actual_changes = await gpu_man.activate_performance(target_gpu_ids={'3'})
+
+        driver_1.can_work.assert_called_once()
+        driver_1.get_cached_gpus.assert_called_once()
+        driver_1.lock.assert_not_called()
+        driver_1.get_performance_mode.assert_not_called()
+        driver_1.get_power_mode.assert_not_called()
+        driver_1.set_power_mode.assert_not_called()
+
+        self.assertFalse(actual_changes)
+        self.assertFalse(gpu_man.get_gpu_state_cache_view())
+
+    async def test_activate_performance__should_try_to_activate_performance_when_no_gpus_available(self):
+        driver_1 = Mock()
+        driver_1.__class__ = GPUDriver
+        driver_1.lock.return_value = Lock()
+        driver_1.can_work.return_value = True, None
+        driver_1.get_performance_mode.return_value = NvidiaPowerMode.PERFORMANCE
+        driver_1.get_cached_gpus = AsyncMock(return_value=set())
+        driver_1.get_power_mode = AsyncMock()
+        driver_1.set_power_mode = AsyncMock()
+
+        gpu_man = GPUManager(logger=Mock(), drivers=[driver_1])
+        actual_changes = await gpu_man.activate_performance()
+
+        driver_1.can_work.assert_called_once()
+        driver_1.get_cached_gpus.assert_called_once()
+        driver_1.lock.assert_not_called()
+        driver_1.get_performance_mode.assert_not_called()
+        driver_1.get_power_mode.assert_not_called()
+        driver_1.set_power_mode.assert_not_called()
+
+        self.assertFalse(actual_changes)
+        self.assertFalse(gpu_man.get_gpu_state_cache_view())
+
     async def test_activate_performance__should_only_activate_gpu_performance_for_concurrent_calls(self):
         driver_lock = Lock()
 

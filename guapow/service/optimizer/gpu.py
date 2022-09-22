@@ -508,13 +508,14 @@ class GPUManager:
             target_gpus = gpus.intersection(target_gpu_ids) if target_gpu_ids else gpus
 
             if not target_gpus:
-                self._log.debug(f"[{driver.get_vendor_name()} GPU] No valid target GPUs available "
-                                f"to enter in performance mode (valid: {', '.join(sorted(gpus))})")
+                self._log.debug(f"[{driver.get_vendor_name()}] No valid target GPUs available "
+                                f"for performance mode (valid: {', '.join(sorted(gpus))})")
                 continue
 
             async with driver.lock():
                 if target_gpu_ids and gpus != target_gpu_ids:
-                    self._log.debug(f"Target GPU ids to enter in performance mode: {', '.join(sorted(target_gpus))}")
+                    self._log.debug(f"[{driver.get_vendor_name()}] Target GPU ids for performance mode: "
+                                    f"{', '.join(sorted(target_gpus))}")
 
                 gpu_modes = await driver.get_power_mode(target_gpus, user_environment)
                 if gpu_modes:
@@ -542,7 +543,7 @@ class GPUManager:
                         not_changed = {gpu for gpu, changed in gpus_changed.items() if not changed}
 
                         if not_changed:
-                            self._log.error(f"Could not change power mode of {driver.get_vendor_name()} GPUs: "
+                            self._log.error(f"[{driver.get_vendor_name()}] could not change power mode of GPUs: "
                                             f"{', '.join(sorted(not_changed))}")
 
                     res[driver.__class__] = driver_res
