@@ -442,7 +442,7 @@ class GPUManager:
 
         if gpus != cached_gpus:
             gpu_ids = f" (ids={', '.join((str(i) for i in sorted(gpus)))})" if gpus else ''
-            self._log.debug(f'{driver.get_vendor_name()} GPUs available: {len(gpus)}{gpu_ids}')
+            self._log.debug(f'[{driver.get_vendor_name()}] GPUs available: {len(gpus)}{gpu_ids}')
             driver_cache[self.LOG_CACHE_KEY__AVAILABLE] = gpus
 
         return gpus
