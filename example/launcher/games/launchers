@@ -27,3 +27,4 @@ ShadowOfTheTombRaider.sh=c%*/ShadowOfTheTombRaider  # Shadow Of The Tomb Raider 
 Raji.exe=Raji-Win64-Ship  # Raji: an ancient epic
 start_protected_game.exe*=MultiVersus-Win  # MultiVersus
 Mordhau.exe=CrRendererMain  # Mordhau
+COTS.exe=BlueCode-Win64-  # Call Of The Sea
