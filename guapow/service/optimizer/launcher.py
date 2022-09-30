@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from logging import Logger
-from typing import Dict, Optional, Tuple, List, Generator
+from typing import Dict, Optional, Tuple, Generator, AsyncGenerator, AsyncIterator
 
 import aiofiles
 
@@ -93,13 +93,16 @@ async def map_launchers_file(wrapper_file: str, logger: Logger) -> Optional[Dict
 
 
 class LauncherMapper(ABC):
+    """
+    Responsible for mapping the real processes to be optimized since a source process.
+    """
 
     def __init__(self, check_time: float, logger: Logger):
         self._log = logger
         self._check_time = check_time
 
     @abstractmethod
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         pass
 
 
@@ -137,7 +140,7 @@ class ExplicitLauncherMapper(LauncherMapper):
         find_time = (datetime.now() - time_init).total_seconds()
         self._log.warning(f"Could not find process with {search_mode.name.lower()} '{wrapped_name}' (launcher={launcher}). Timed out in {find_time:.2f} seconds")
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         if profile.launcher and profile.launcher.skip_mapping:
             self._log.info(f"Skipping launcher mapping for {profile.get_log_str()} (pid: {request.pid})")
             return
@@ -169,7 +172,10 @@ class ExplicitLauncherMapper(LauncherMapper):
                             break
 
             if wrapped_target:
-                return await self._find_wrapped_process(wrapped_target, file_name)
+                pid_found = await self._find_wrapped_process(wrapped_target, file_name)
+
+                if pid_found is not None:
+                    yield pid_found
 
         else:
             self._log.debug("No valid launchers mapped found")
@@ -180,7 +186,7 @@ class SteamLauncherMapper(LauncherMapper):
     def __init__(self, wait_time: float, logger: Logger):
         super(SteamLauncherMapper, self).__init__(check_time=wait_time, logger=logger)
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncIterator[int]:
         if profile.steam:
             steam_cmd = steam.get_steam_runtime_command(request.command)
 
@@ -198,7 +204,8 @@ class SteamLauncherMapper(LauncherMapper):
                 cmd_patterns = {re.compile(r'(/bin/\w+\s+)?{}'.format(re.escape(steam_cmd)))}  # native games
 
             cmd_logs = ', '.join(p.pattern for p in cmd_patterns)
-            self._log.debug(f'Looking for a Steam process matching one of the command patterns (pid: {request.pid}): {cmd_logs}')
+            self._log.debug(f'Looking for a Steam process matching one of the command patterns (pid: {request.pid}): '
+                            f'{cmd_logs}')
 
             time_init = datetime.now()
             time_limit = time_init + timedelta(seconds=self._check_time)
@@ -207,8 +214,10 @@ class SteamLauncherMapper(LauncherMapper):
                 find_time = (datetime.now() - time_init).total_seconds()
 
                 if proc_found is not None:
-                    self._log.info(f"Steam process '{proc_found[1]}' ({proc_found[0]}) found in {find_time:.2f} seconds")
-                    return proc_found[0]
+                    self._log.info(f"Steam process '{proc_found[1]}' "
+                                   f"({proc_found[0]}) found in {find_time:.2f} seconds")
+                    yield proc_found[0]
+                    return
                 else:
                     await asyncio.sleep(0.001)
 
@@ -230,28 +239,32 @@ class SteamLauncherMapper(LauncherMapper):
 
                 if proc_found:
                     self._log.info(f"Steam process named '{proc_found[0]}' ({proc_found[1]}) found in {tf - ti:.2f} seconds")
-                    return proc_found[0]
+                    yield proc_found[0]
                 else:
                     self._log.warning(f'Could not find a Steam process named {proc_name} (request={request.pid})')
 
 
 class LauncherMapperManager(LauncherMapper):
-
-    def __init__(self, check_time: float, logger: Logger, mappers: Optional[List[LauncherMapper]] = None):
+    def __init__(self, check_time: float, logger: Logger, mappers: Optional[Tuple[LauncherMapper, ...]] = None):
         super(LauncherMapperManager, self).__init__(check_time, logger)
 
         if mappers:
             self._sub_mappers = mappers
         else:
-            self._sub_mappers = [cls(check_time, logger) for cls in LauncherMapper.__subclasses__() if cls != self.__class__]
+            self._sub_mappers = tuple(cls(check_time, logger) for cls in LauncherMapper.__subclasses__()
+                                      if cls != self.__class__)
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
+        any_mapper_yield = False
         for mapper in self._sub_mappers:
-            real_id = await mapper.map_pid(request, profile)
+            if any_mapper_yield:  # if any mapper already returned something, stop the iteration
+                return
 
-            if real_id:
-                return real_id
+            async for real_id in mapper.map_pids(request, profile):
+                if real_id is not None:
+                    any_mapper_yield = True
+                    yield real_id
 
-    def get_sub_mappers(self) -> Optional[List[LauncherMapper]]:
+    def get_sub_mappers(self) -> Optional[Tuple[LauncherMapper]]:
         if self._sub_mappers is not None:
-            return [*self._sub_mappers]
+            return tuple(self._sub_mappers)

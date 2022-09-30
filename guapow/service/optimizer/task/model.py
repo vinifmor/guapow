@@ -69,20 +69,30 @@ class OptimizedProcess:
     def __init__(self, request: OptimizationRequest, created_at: float, profile: Optional[OptimizationProfile] = None,
                  previous_gpus_states: Optional[Dict[Type[GPUDriver], Set[GPUState]]] = None,
                  previous_cpu_state: Optional[CPUState] = None, stopped_after_launch: Optional[Dict[str, str]] = None,
-                 cpu_energy_policy_changed: bool = False):
+                 cpu_energy_policy_changed: bool = False, alive: bool = True, related_pids: Optional[Set[int]] = None,
+                 pid: Optional[int] = None):
         self.created_at = created_at
         self.request = request
         self.profile = profile
         self.previous_gpus_states = previous_gpus_states
         self.previous_cpu_state = previous_cpu_state
         self.stopped_after_launch = stopped_after_launch
-        self.alive = True
-        self.related_pids = {*self.request.related_pids} if self.request and self.request.related_pids else set()
-        self.pid = request.pid if self.request else None
+        self.alive = alive
+
+        if related_pids is not None:
+            self.related_pids = related_pids
+        else:
+            self.related_pids = {*self.request.related_pids} if self.request and self.request.related_pids else set()
+
+        if pid is not None:
+            self.pid = pid
+        else:
+            self.pid = request.pid if self.request else None
+
         self.cpu_energy_policy_changed = cpu_energy_policy_changed
 
     def should_be_watched(self) -> bool:
-        return bool(self.pid is not None and any([self.related_pids,
+        return bool(self.pid is not None and any((self.related_pids,
                                                   self.previous_cpu_state,
                                                   self.previous_gpus_states,
                                                   self.post_scripts,
@@ -90,7 +100,7 @@ class OptimizedProcess:
                                                   self.stopped_processes,
                                                   self.requires_mouse_hidden,
                                                   self.stopped_after_launch,
-                                                  self.cpu_energy_policy_changed]))
+                                                  self.cpu_energy_policy_changed)))
 
     @property
     def source_pid(self) -> Optional[int]:
@@ -143,26 +153,20 @@ class OptimizedProcess:
 
             return pids
 
-    def __eq__(self, other):
-        if not isinstance(other, OptimizedProcess):
-            return False
+    def __eq__(self, other) -> bool:
+        if isinstance(other, OptimizedProcess):
+            return self.__dict__ == other.__dict__
 
-        for p, v in self.__dict__.items():
-            if v != getattr(other, p):
-                return False
+        return False
 
-        return True
-
-    def __hash__(self):
-        hash_sum = 0
-
-        for _, v in sorted(self.__dict__.items()):
-            hash_sum += hash(v)
-
-        return hash_sum
+    def __hash__(self) -> int:
+        return sum(hash(v) for v in self.__dict__.values())
 
     def __repr__(self):
         return f'{self.__class__.__name__} {self.__dict__}'
+
+    def clone(self) -> "OptimizedProcess":
+        return OptimizedProcess(**self.__dict__)
 
 
 class Task(ABC):

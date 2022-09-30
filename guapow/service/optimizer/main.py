@@ -94,7 +94,7 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
                                   compositor=compositor, allow_root_scripts=bool(opt_config.allow_root_scripts),
                                   launcher_mapping_timeout=opt_config.launcher_mapping_timeout,
                                   mouse_man=MouseCursorManager(logger), renicer_interval=opt_config.renicer_interval,
-                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue.empty(),
+                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue(set(), logger),
                                   system_service=opt_config.is_service(),
                                   gpu_ids={str(i) for i in opt_config.gpu_ids} if opt_config.gpu_ids else None)
 
