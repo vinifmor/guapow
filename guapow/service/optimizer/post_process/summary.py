@@ -37,7 +37,7 @@ class PostProcessSummary:
         self.restore_cpu_energy_policy = restore_cpu_energy_policy
 
     @classmethod
-    def empyt(cls) -> "PostProcessSummary":
+    def empty(cls) -> "PostProcessSummary":
         return cls(pids_alive=None, user_id=None, user_env=None, restore_compositor=None, previous_cpu_states=None,
                    cpus_in_use=None, previous_gpus_states=None, pids_to_stop=None, processes_relaunch_by_time=None,
                    post_scripts=None, gpus_in_use=None, keep_compositor_disabled=None, processes_not_relaunch=None,
@@ -224,7 +224,7 @@ class GeneralPostProcessSummarizer(PostProcessSummarizer):
                 await analyser.fill(summary, process, main_context)
 
     async def summarize(self, processes: List[OptimizedProcess], pids_alive: Set[int], processes_to_relaunch: Optional[Dict[str, Optional[str]]], context: OptimizationContext) -> PostProcessSummary:
-        summary = PostProcessSummary.empyt()
+        summary = PostProcessSummary.empty()
         summary.processes_to_relaunch = processes_to_relaunch
         summary.pids_alive = pids_alive
 
