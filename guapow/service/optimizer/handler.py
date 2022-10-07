@@ -2,13 +2,14 @@ import asyncio
 import os
 import time
 from asyncio import Task
-from typing import Optional, Awaitable, Tuple, Iterable, AsyncGenerator
+from typing import Optional, Awaitable, Tuple, Iterable, AsyncGenerator, List
 
 from guapow.common.dto import OptimizationRequest
 from guapow.common.profile import get_possible_profile_paths_by_priority, \
     get_default_profile_name
 from guapow.service.optimizer.launcher import LauncherMapperManager
 from guapow.service.optimizer.profile import OptimizationProfile, OptimizationProfileReader
+from guapow.service.optimizer.task.environment import EnvironmentTask
 from guapow.service.optimizer.task.manager import TasksManager, run_tasks
 from guapow.service.optimizer.task.model import OptimizationContext, OptimizedProcess
 from guapow.service.optimizer.watch import DeadProcessWatcherManager
@@ -134,6 +135,8 @@ class OptimizationHandler:
             source_process = OptimizedProcess(request=request, created_at=time.time(), profile=profile)
 
             handled_pids = set()
+            env_tasks: Optional[List[EnvironmentTask]] = None
+
             if profile:
                 env_tasks = await self._tasks_man.get_available_environment_tasks(source_process)
 
@@ -143,4 +146,4 @@ class OptimizationHandler:
 
             if not handled_pids and source_process.pid not in handled_pids:
                 # only tries to handle the source process in case it wasn't mapped as other processes
-                await self._handle_process(source_process)
+                await self._handle_process(source_process, env_tasks=env_tasks)
