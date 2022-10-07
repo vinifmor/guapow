@@ -134,16 +134,17 @@ class OptimizationHandler:
 
             source_process = OptimizedProcess(request=request, created_at=time.time(), profile=profile)
 
-            handled_pids = set()
             env_tasks: Optional[List[EnvironmentTask]] = None
-
             if profile:
                 env_tasks = await self._tasks_man.get_available_environment_tasks(source_process)
 
+                pids_handled = False
                 async for mapped_proc, proc_tasks in self._generate_process_tasks(source_process):
                     await self._handle_process(mapped_proc, proc_tasks, env_tasks)
-                    handled_pids.add(mapped_proc.pid)
+                    pids_handled = True
 
-            if not handled_pids and source_process.pid not in handled_pids:
-                # only tries to handle the source process in case it wasn't mapped as other processes
-                await self._handle_process(source_process, env_tasks=env_tasks)
+                if pids_handled:
+                    return
+
+            # only tries to handle the source process in case it wasn't mapped as other processes
+            await self._handle_process(source_process, env_tasks=env_tasks)
