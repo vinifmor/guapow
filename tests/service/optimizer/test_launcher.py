@@ -1,12 +1,11 @@
-import re
-from typing import Set, Optional
+import asyncio
+from typing import Set, Optional, Tuple
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import Mock, patch, AsyncMock, call
 
 from guapow import __app_name__
 from guapow.common import util
 from guapow.common.dto import OptimizationRequest
-from guapow.common.steam import get_proton_exec_name_and_paths, get_steam_runtime_command
 from guapow.service.optimizer.launcher import map_launchers_file, gen_possible_launchers_file_paths, \
     LauncherSearchMode, map_launchers_dict, ExplicitLauncherMapper, SteamLauncherMapper, LauncherMapperManager
 from guapow.service.optimizer.profile import OptimizationProfile, LauncherSettings
@@ -95,7 +94,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.logger = Mock()
-        self.mapper = ExplicitLauncherMapper(wait_time=30, logger=self.logger)
+        self.mapper = ExplicitLauncherMapper(check_time=30, found_check_time=0, logger=self.logger)
 
     @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', side_effect=FileNotFoundError)
     async def test_map_pids__return_none_when_there_is_no_possible_launchers_file_available(self, map_launchers: Mock):
@@ -328,81 +327,560 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
-        self.mapper = SteamLauncherMapper(wait_time=0.001, logger=Mock())
+        self.mapper = SteamLauncherMapper(check_time=0.0001, found_check_time=0.0001, iteration_sleep_time=0,
+                                          logger=Mock())
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, 'Game_x64.exe'))
-    async def test_map_pids__return_id_when_proton_command_not_from_runtime(self, find_process_by_command: AsyncMock):
-        cmd = 'home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- /home/user/.local/share/Steam/steamapps/common/Proton 3.16/proton waitforexitandrun /home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+            1403#    2601# reaper
+            2601#    2602# ABC.x86_
+            2601#    2603# ABC.x86_-thread
+    """))
+    async def test_map_pids__yield_several_ids_when_native_command_not_from_runtime(self, async_syscall: AsyncMock):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=999999 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
+
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({2602, 2603}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+       1403#    11573# reaper
+       11573#   11574# pv-bwrap
+       11574#   11728# pressure-vessel
+       11728#   13786# ABC.x86_
+       11728#   13787# ABC.x86_-thread
+    """))
+    async def test_map_pids__yield_several_ids_when_native_command_from_runtime(self, async_syscall: AsyncMock):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=245170 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point " \
+              "--verb=waitforexitandrun -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime/scout-on-soldier-entry-point-v2 -- " \
+              "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
+
+        request = OptimizationRequest(pid=11573, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({13786, 13787}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    5615# python3
+        5615#    5661# Game_x64.exe
+        5615#    5662# Game_x64-thread
+    """))
+    async def test_map_pids__yield_several_ids_when_proton_command_not_from_runtime(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 3.16/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        self.assertEqual({5661, 5662}, await map_pids())
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
+    async def test_map_pids__yield_several_ids_when_proton_command_from_runtime(self, async_syscall: AsyncMock):
+        class MockedAsyncSysCall:
+            def __init__(self):
+                self.call_count = 0
+
+            async def call(self, *args, **kwargs) -> Tuple[int, str]:
+                self.call_count += 1
+                if self.call_count == 1:
+                    return (0, """
+                    12# 123#  reaper
+                    123# 456#  pv-bwrap
+                    456# 789#  pressure-vessel
+                    789# 1011# python3
+                    789# 1213# Game_x64.exe""")  # first call just one child found
+
+                return (0, """
+                    12# 123#  reaper
+                    123# 456#  pv-bwrap
+                    456# 789#  pressure-vessel
+                    789# 1011# python3
+                    789# 1213# Game_x64.exe,
+                    789# 1214# Game_x64-thread"""  # second call one more child found
+                        )
+
+        mocked_call = MockedAsyncSysCall()
+        async_syscall.side_effect = mocked_call.call
+
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        self.mapper = SteamLauncherMapper(check_time=0.005,  # using a higher wait time for this test case
+                                          found_check_time=0,
+                                          logger=Mock())
+        request = OptimizationRequest(pid=123, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        await map_pids()
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 2)
+        self.assertEqual({1213, 1214}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    30324# pv-bwrap
+        30324#   30408# pressure-vessel
+        30408#    5615# python3
+        30408#    5676# wineserver
+        30408#    5711# services.exe
+        30408#    5745# winedevice.exe
+        30408#    5760# plugplay.exe
+        30408#    5765# winedevice.exe
+        30408#    5774# explorer.exe
+        30408#    5775# OriginWebHelper
+        30408#    5776# Origin.exe
+        30408#    5777# OriginClientSer
+        30408#    5778# QtWebEngineProc
+        30408#    5779# EASteamProxy.ex
+        30408#    5780# PnkBstrA.exe
+        30408#    5781# UPlayBrowser.exe
+        30408#    5782# wine
+        30408#    5783# wine64
+        30408#    5784# proton
+        30408#    5785# gzip
+        30408#    5786# steam.exe
+        30408#    5787# python 
+        30408#    5661# Game_x64.exe
+    """))
+    async def test_map_pids__should_not_yield_ignored_processes(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    30324# pv-bwrap
+        30324#   30408# pressure-vessel
+        30408#    5615# python3
+        30408#    5676# wineserver
+        30408#    5661# Game_x64.exe
+        5661#     5662# wine64
+        5662#     5663# wineboot.exe
+    """))
+    async def test_map_pids__should_not_yield_ignored_that_are_children_of_targets(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    30324# pv-bwrap
+        30324#   30408# pressure-vessel
+        30408#    5661# Game_x64.exe
+        30408#    5662# Game_thread <defunct>
+    """))
+    async def test_map_pids__should_not_yield_defunct_processes(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    30324# pv-bwrap
+        30324#   30408# pressure-vessel
+        30408#    5661# Game_x64.exe
+        30408#    5662# pressure-vessel
+        30408#    5663# pv-bwrap
+        30408#    5664# reaper
+    """))
+    async def test_map_pids__should_not_yield_children_with_name_in_hierachy(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        1435#    5614# reaper
+        5614#    30324# pv-bwrap
+        30324#   30408# pressure-vessel
+        30408#    5661# Game_x64.exe
+        5661#     5662# pressure-vessel
+        5662#     5663# pv-bwrap
+        5663#     5664# reaper
+    """))
+    async def test_map_pids__should_not_yield_children_of_children_with_name_in_hierachy(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+
+        request = OptimizationRequest(pid=5614, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        12# 123#  reaper
+        123# 456#  pv-bwrap
+        456# 789#  pressure-vessel
+        789# 1011# python3
+        789# 1213# Game_x64.exe
+        789# 1214# Game_x64-thread   
+    """))
+    async def test_map_pids__yield_children_until_timeout_is_reached(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
 
         request = OptimizationRequest(pid=123, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({1213, 1214}, mapped_pids)
 
-        expected_wine_path = {util.map_any_regex(c) for c in get_proton_exec_name_and_paths(cmd)[1:]}
-        find_process_by_command.assert_awaited_once_with(expected_wine_path, last_match=True)
-
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, 'Game_x64.exe'))
-    async def test_map_pids__return_id_when_proton_command_from_runtime(self, find_process_by_command: AsyncMock):
-        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- /home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point --verb=waitforexitandrun -- /home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun /home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
-
-        request = OptimizationRequest(pid=123, command=cmd, user_name='user')
-        profile = new_steam_profile(enabled=True)
-
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
-
-        self.assertEqual({456}, await map_pids())
-
-        expected_wine_path = {util.map_any_regex(c) for c in get_proton_exec_name_and_paths(cmd)[1:]}
-        find_process_by_command.assert_awaited_once_with(expected_wine_path, last_match=True)
-
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, 'Game_x64.exe'))
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=None)
-    async def test_map_pids__return_id_when_proton_command_patterns_not_match_but_name_does(self, *mocks: AsyncMock):
-        find_process_by_command, find_process_by_name = mocks[0], mocks[1]
-        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- /home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point --verb=waitforexitandrun -- /home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun /home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+        12# 123#  reaper
+        123# 456#  pv-bwrap
+        456# 789#  pressure-vessel
+        789# 1011# python3
+    """))
+    async def test_map_pids__yield_nothing_when_no_children_is_found(self, async_syscall: AsyncMock):
+        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point ' \
+              '--verb=waitforexitandrun -- ' \
+              '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
+              '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
 
         request = OptimizationRequest(pid=123, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual(set(), mapped_pids)
 
-        find_process_by_command.assert_awaited()
-        find_process_by_name.assert_awaited_once_with(re.compile(r'^Game_x64.exe$'), last_match=True)
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
+    async def test_map_pids__it_should_stopping_yielding_if_the_last_yield_timeout_reached(self, *mocks: AsyncMock):
+        async_syscall = mocks[0]
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, 'gm2.sh'))
-    async def test_map_pids__return_id_when_command_not_from_proton(self, find_process_by_command: AsyncMock):
-        cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- /home/user/.local/share/Steam/steamapps/common/Game 2/gm2.sh -game tf -steam'
+        class MockedAsyncSysCall:
+            def __init__(self):
+                self.call_count = 0
 
-        request = OptimizationRequest(pid=123, command=cmd, user_name='user')
+            async def call(self, *args, **kwargs) -> Tuple[int, str]:
+                self.call_count += 1
+                if self.call_count < 3:  # first two calls must return the same to simulate this scenario
+                    await asyncio.sleep(0.0005)
+                    return (0, """1403#    2601# reaper
+                                  2601#    2602# ABC.x86_""")
+
+                return (0, """1403#    2601# reaper
+                              2601#    2602# ABC.x86_
+                              2601#    2603# ABC.x86_-thread""")
+
+        mocked_call = MockedAsyncSysCall()
+        async_syscall.side_effect = mocked_call.call
+
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=999999 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
+
+        self.mapper = SteamLauncherMapper(check_time=0.001, found_check_time=0.0005, logger=Mock())
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        await map_pids()
 
-        expected_wine_path = {re.compile(r'(/bin/\w+\s+)?{}'.format(re.escape(get_steam_runtime_command(cmd))))}
-        find_process_by_command.assert_awaited_once_with(expected_wine_path, last_match=True)
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertEqual(2, async_syscall.await_count)
+        self.assertEqual({2602}, mapped_pids)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+            1403#    2601# reaper
+            2601#    2602# ABC.x86_
+            2602#    2603# ABC.x86_-thread
+            2603#    2604# ABC.x86_-thread-2
+    """))
+    async def test_map_pids__it_should_yield_children_of_target_children(self, async_syscall: AsyncMock):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=999999 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
+
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+        profile = new_steam_profile(enabled=True)
+
+        async def map_pids() -> Optional[Set[int]]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({2602, 2603, 2604}, mapped_pids)
+
+    def test_map_expected_hierarchy__when_proton_command(self):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=443860 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/media/ssd_01/Steam/steamapps/common/Proton 3.16/proton waitforexitandrun " \
+              "/media/ssd_01/Steam/steamapps/common/Game AB Defghij/Game_x64.exe"
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+
+        expected_hierarchy = ["python3", "reaper"]
+        self.assertEqual(expected_hierarchy, self.mapper.map_expected_hierarchy(request, "reaper"))
+        
+    def test_map_expected_hierarchy__when_proton_command_executed_from_container(self):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=622020 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point " \
+              "--verb=waitforexitandrun -- /home/user/.local/share/Steam/steamapps/common/Proton 7.0/proton " \
+              "waitforexitandrun /media/ssd_02/Steam/steamapps/common/Game Abc & def/ABC.exe"
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+
+        expected_hierarchy = ["pressure-vessel", "pv-bwrap", "reaper"]
+        self.assertEqual(expected_hierarchy, self.mapper.map_expected_hierarchy(request, "reaper"))
+
+    def test_map_expected_hierarchy__when_native_command(self):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=245170 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/media/ssd_02/Steam/steamapps/common/Game/Game.x86_64-pc-linux-gnu"
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+
+        expected_hierarchy = ["reaper"]
+        self.assertEqual(expected_hierarchy, self.mapper.map_expected_hierarchy(request, "reaper"))
+
+    def test_map_expected_hierarchy__when_native_command_from_container(self):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=245170 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point " \
+              "--verb=waitforexitandrun -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime/scout-on-soldier-entry-point-v2 -- " \
+              "/media/ssd_02/Steam/steamapps/common/Game/Game.x86_64-pc-linux-gnu"
+        request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
+
+        expected_hierarchy = ["pressure-vessel", "pv-bwrap", "reaper"]
+        self.assertEqual(expected_hierarchy, self.mapper.map_expected_hierarchy(request, "reaper"))
+
+    def test_extract_root_process_name__must_return_the_first_command_call_name(self):
+        cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=622020 -- " \
+              "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
+              "/home/user/.local/share/Steam/steamapps/common/SteamLinuxRuntime_soldier/_v2-entry-point " \
+              "--verb=waitforexitandrun -- /home/user/.local/share/Steam/steamapps/common/Proton 7.0/proton " \
+              "waitforexitandrun /media/ssd_02/Steam/steamapps/common/Game Abc & def/ABC.exe"
+
+        root_cmd = self.mapper.extract_root_process_name(cmd)
+        self.assertEqual("reaper", root_cmd)
+
+    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
+    async def test_map_processes_by_parent(self, async_syscall: AsyncMock):
+        async_syscall.return_value = (0, """
+        1411#    5202# reaper
+        5202#    5203# pv-bwrap
+        5203#    5286# pressure-vessel
+        5286#    7925# python3
+        5286#    8017# wineserver
+        5286#    8708# Game.exe
+        5286#    8747# Game-Win64-Shi
+        """)
+
+        proc_map = await self.mapper.map_processes_by_parent()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertEqual(4, len(proc_map))
+
+        expected = {1411: {(5202, "reaper")},
+                    5202: {(5203, "pv-bwrap")},
+                    5203: {(5286, "pressure-vessel")},
+                    5286: {(7925, "python3"), (8017, "wineserver"), (8708, "Game.exe"), (8747, "Game-Win64-Shi")}}
+        self.assertEqual(expected, proc_map)
+
+    def test_find_target_in_hierarchy__return_the_root_id_when_just_one_element_hierarchy(self):
+        hierarchy = ["reaper"]
+        pids_by_comm = dict()
+
+        target_id = self.mapper.find_target_in_hierarchy(reverse_hierarchy=hierarchy, root_element_pid=456,
+                                                         processes_by_parent=dict(), pid_by_comm=pids_by_comm)
+        self.assertEqual(456, target_id)
+
+    def test_find_target_in_hierarchy__return_the_target_child_id_when_parent_has_children_first_run(self):
+        hierarchy = ["pressure-vessel", "pv-bwrap", "reaper"]
+        pids_by_comm = dict()
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "pressure-vessel")}
+        }
+
+        target_id = self.mapper.find_target_in_hierarchy(reverse_hierarchy=hierarchy, root_element_pid=456,
+                                                         processes_by_parent=parent_procs, pid_by_comm=pids_by_comm)
+        self.assertEqual(1011, target_id)
+        self.assertEqual({"pressure-vessel": 1011, "pv-bwrap": 789, "reaper": 456}, pids_by_comm)
+
+    def test_find_target_in_hierarchy__return_the_target_child_id_when_parent_has_children_on_second_run(self):
+        hierarchy = ["pressure-vessel", "pv-bwrap", "reaper"]
+        pids_by_comm = dict()
+        first_mapping = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+        }
+
+        target_id_first_run = self.mapper.find_target_in_hierarchy(reverse_hierarchy=hierarchy, root_element_pid=456,
+                                                                   processes_by_parent=first_mapping,
+                                                                   pid_by_comm=pids_by_comm)
+        self.assertIsNone(target_id_first_run)
+        self.assertEqual({"pv-bwrap": 789, "reaper": 456}, pids_by_comm)
+
+        second_mapping = {**first_mapping, 789: {(1011, "pressure-vessel")}}
+
+        target_id_second_run = self.mapper.find_target_in_hierarchy(reverse_hierarchy=hierarchy, root_element_pid=456,
+                                                                    processes_by_parent=second_mapping,
+                                                                    pid_by_comm=pids_by_comm)
+        self.assertEqual(1011, target_id_second_run)
+        self.assertEqual({"pressure-vessel": 1011, "pv-bwrap": 789, "reaper": 456}, pids_by_comm)
+
+    def test_find_target_in_hierarchy__return_the_latest_target_child_id_when_multiple_matches(self):
+        hierarchy = ["pressure-vessel", "pv-bwrap", "reaper"]
+        pids_by_comm = dict()
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "pressure-vessel"), (1012, "pressure-vessel")}
+        }
+
+        target_id = self.mapper.find_target_in_hierarchy(reverse_hierarchy=hierarchy, root_element_pid=456,
+                                                         processes_by_parent=parent_procs, pid_by_comm=pids_by_comm)
+        self.assertEqual(1012, target_id)
+        self.assertEqual({"pressure-vessel": 1012, "pv-bwrap": 789, "reaper": 456}, pids_by_comm)
+
+    def test_to_ignore__must_contain_ea_origin_processes(self):
+        expected_processes = {"OriginWebHelper", "Origin.exe", "OriginClientSer", "QtWebEngineProc",
+                              "EASteamProxy.ex", "UPlayBrowser.exe", "ldconfig", "EALink.exe", "OriginLegacyCLI",
+                              "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe", "ActivationUI.ex"}
+
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
+    def test_to_ignore__must_contain_wine_processes(self):
+        expected_processes = {"wineserver", "services.exe", "winedevice.exe", "plugplay.exe", "svchost.exe",
+                              "explorer.exe", "rpcss.exe", "tabtip.exe", "wine", "wine64", "wineboot.exe",
+                              "cmd.exe", "conhost.exe", "start.exe"}
+
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
+    def test_to_ignore__must_contain_proton_processes(self):
+        expected_processes = {"steam-runtime-l", "proton", "gzip", "steam.exe", "python", "python3"}
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
+    def test_to_ignore__must_contain_anticheat_processes(self):
+        expected_processes = {"PnkBstrA.exe"}
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
+    def test_to_ignore__must_contain_unknown_unneeded_processes(self):
+        expected_processes = {"whql:off"}
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
+    def test_find_children__it_should_find_children_of_already_found_processes(self):
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "abc"), (1012, "def")}
+        }
+
+        already_found = {789}
+        new_found = {p for p in self.mapper.find_children(ppid=456,
+                                                          processes_by_parent=parent_procs,
+                                                          already_found=already_found)}
+        self.assertEqual({1011, 1012}, new_found)
 
 
 class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):
@@ -413,10 +891,11 @@ class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):
         mocked_mapper.map_pids = Mock(return_value=AsyncIterator([]))
 
         # second sub-mapper that would inspect the request and actually find the process
-        steam_mapper = SteamLauncherMapper(wait_time=30, logger=Mock())
+        steam_mapper = SteamLauncherMapper(check_time=30, found_check_time=0, logger=Mock())
         steam_mapper.map_pids = Mock(return_value=AsyncIterator([456]))
 
-        manager = LauncherMapperManager(check_time=30, logger=Mock(), mappers=(mocked_mapper, steam_mapper))
+        manager = LauncherMapperManager(check_time=30, found_check_time=0, logger=Mock(),
+                                        mappers=(mocked_mapper, steam_mapper))
 
         request = OptimizationRequest(pid=123, command='/abc', user_name='user')
         profile = new_steam_profile(enabled=True)
@@ -433,7 +912,7 @@ class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):
         steam_mapper.map_pids.assert_called_once()
 
     async def test_get_sub_mappers__order(self):
-        manager = LauncherMapperManager(check_time=30, logger=Mock())
+        manager = LauncherMapperManager(check_time=30, found_check_time=0, logger=Mock())
         mappers = manager.get_sub_mappers()
         self.assertIsNotNone(mappers)
         self.assertEqual(2, len(mappers))

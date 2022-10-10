@@ -26,13 +26,16 @@ class OptimizationHandler:
         self._tasks_man = tasks_man
         self._watcher_man = watcher_man
         self._profile_reader = profile_reader
-        self._launcher_mapper = LauncherMapperManager(check_time=context.launcher_mapping_timeout, logger=context.logger)
+        self._launcher_mapper = LauncherMapperManager(check_time=context.launcher_mapping_timeout,
+                                                      found_check_time=10.0,  # TODO replace by config on context
+                                                      logger=context.logger)
 
     async def _read_valid_profile(self, name: str, add_settings: Optional[str], user_id: Optional[int], user_name: Optional[str], request: OptimizationRequest) -> Optional[OptimizationProfile]:
         for file_path in get_possible_profile_paths_by_priority(name=name, user_id=user_id, user_name=user_name):
             if file_path:
                 try:
-                    return await self._profile_reader.read_valid(profile_path=file_path, add_settings=add_settings, handle_not_found=False)
+                    return await self._profile_reader.read_valid(profile_path=file_path, add_settings=add_settings,
+                                                                 handle_not_found=False)
                 except FileNotFoundError:
                     self._log.debug(f"Profile file '{file_path}' not found (request={request.pid})")
 
