@@ -377,14 +377,12 @@ class SteamLauncherMapper(LauncherMapper):
                                             f"comm={expected_hierarchy[0]}) (source_pid={request.pid})")
 
                     if target_ppid is not None:
-                        any_yield = False  # if any yield happened on this iteration
                         for pid in self.find_children(ppid=target_ppid, processes_by_parent=parent_procs,
                                                       already_found=already_found, to_ignore=to_ignore):
-                            yield pid
-                            any_yield = True
+                            if self._found_check_time >= 0:
+                                latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
 
-                        if any_yield and self._found_check_time >= 0:
-                            latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
+                            yield pid
 
                     if self._iteration_sleep_time and self._iteration_sleep_time > 0:
                         await asyncio.sleep(self._iteration_sleep_time)
