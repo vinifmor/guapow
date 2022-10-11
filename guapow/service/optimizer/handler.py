@@ -27,7 +27,7 @@ class OptimizationHandler:
         self._watcher_man = watcher_man
         self._profile_reader = profile_reader
         self._launcher_mapper = LauncherMapperManager(check_time=context.launcher_mapping_timeout,
-                                                      found_check_time=10.0,  # TODO replace by config on context
+                                                      found_check_time=context.launcher_mapping_found_timeout,
                                                       logger=context.logger)
 
     async def _read_valid_profile(self, name: str, add_settings: Optional[str], user_id: Optional[int], user_name: Optional[str], request: OptimizationRequest) -> Optional[OptimizationProfile]:

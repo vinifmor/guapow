@@ -460,24 +460,25 @@ makepkg -si
 - It applies the optimizations changes only once per optimization request. So, if it changes the CPUs governors to performance, and you manually change them later to something else, it will not set the governors to performance again (unless another optimization request arrives).
 - [Service definition file](https://github.com/vinifmor/guapow/blob/master/guapow/dist/daemon/systemd/root/guapow-opt.service)
 - By default, it runs at port **5087** and demands encrypted requests for security reasons (all done automatically).
-- Its settings are defined on the files: `~/.config/guapow/opt.conf` (user) or `/etc/guapow/opt.conf` (system). Preference: user > system (if running as **root**, system is the only option)
-    - <a name="opt_settings">Properties:</a>
+  - Its settings are defined on the files: `~/.config/guapow/opt.conf` (user) or `/etc/guapow/opt.conf` (system). Preference: user > system (if running as **root**, system is the only option)
+      - <a name="opt_settings">Properties:</a>
+      ```
+          port = 5087 (TCP port)
+          compositor = (pre-defines the installed compositor. Options: kwin, compiz, marco, picom, compton, nvidia)
+          scripts.allow_root = false (allow custom scripts/commands to run at the root level)
+          check.finished.interval = 3 (finished applications checking interval in seconds. Min accepted value: 0.5)
+          launcher.mapping.timeout = 60 (maximum time in seconds to look for a process mapped to a different process. This property also affects the period to look for Steam subprocesses.  float values are allowed)
+          launcher.mapping.found_timeout = 10 (maximum time in seconds to still keep looking for a process mapped to a different process after a match. This property also affects the period to look for Steam subprocesses.  float values are allowed)
+          gpu.cache = false (if 'true': maps all available GPUs once after the first request (if running as a system service) or during startup (if not running as system service). Otherwise, GPUs will be mapped for every request)
+          gpu.id = # comma separated list of integers representing which GPU cards should be optimized (e.g: 0, 1). If not defined, all available GPUs are considered (default)
+          gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd
+          cpu.performance = false  (set cpu governors and energy policy levels to full performance on startup)
+          request.allowed_users = (restricts users that can request optimizations, separated by comma. e.g: root,xpto)
+          request.encrypted = true (only accepts encrypted requests for security reasons)
+          profile.cache = false (cache profile files on demand to skip I/O operations. Changes to profile files require restarting)
+          profile.pre_caching = false (loads all existing profile files on disk in memory during the intialization process. Requires 'profile.cache' enabled)
+          nice.check.interval = 5  (processes nice levels monitoring interval in seconds)  
     ```
-        port = 5087 (TCP port)
-        compositor = (pre-defines the installed compositor. Options: kwin, compiz, marco, picom, compton, nvidia)
-        scripts.allow_root = false (allow custom scripts/commands to run at the root level)
-        check.finished.interval = 3 (finished applications checking interval in seconds. Min accepted value: 0.5)
-        launcher.mapping.timeout = 60 (max time in seconds to find a process mapped to a different process. This property also affects the period to look for Steam subprocesses.  float values are allowed)
-        gpu.cache = false (if 'true': maps all available GPUs once after the first request (if running as a system service) or during startup (if not running as system service). Otherwise, GPUs will be mapped for every request)
-        gpu.id = # comma separated list of integers representing which GPU cards should be optimized (e.g: 0, 1). If not defined, all available GPUs are considered (default)
-        gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd
-        cpu.performance = false  (set cpu governors and energy policy levels to full performance on startup)
-        request.allowed_users = (restricts users that can request optimizations, separated by comma. e.g: root,xpto)
-        request.encrypted = true (only accepts encrypted requests for security reasons)
-        profile.cache = false (cache profile files on demand to skip I/O operations. Changes to profile files require restarting)
-        profile.pre_caching = false (loads all existing profile files on disk in memory during the intialization process. Requires 'profile.cache' enabled)
-        nice.check.interval = 5  (processes nice levels monitoring interval in seconds)  
-  ```
     
 - Its installation can be managed using the **guapow-cli** tool:
     - `guapow-cli install-optimizer`: copies the service definition file to the appropriate directory, starts and enables it.

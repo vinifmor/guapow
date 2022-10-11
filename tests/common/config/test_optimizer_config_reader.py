@@ -105,6 +105,12 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(config)
         self.assertEqual(0.5, config.launcher_mapping_timeout)
 
+    async def test_read_valid__return_instance_with_valid_launcher_mapping_found_timeout_defined(self):
+        file_path = f'{RESOURCES_DIR}/opt_launcher_found_timeout.conf'
+        config = await self.reader.read_valid(file_path=file_path)
+        self.assertIsNotNone(config)
+        self.assertEqual(0.5, config.launcher_mapping_found_timeout)
+
     async def test_read_valid__return_instance_with_valid_gpu_cache(self):
         file_path = f'{RESOURCES_DIR}/opt_gpu_cache.conf'
         config = await self.reader.read_valid(file_path=file_path)

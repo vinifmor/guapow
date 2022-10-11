@@ -193,6 +193,10 @@ class OptimizerConfigTest(TestCase):
         instance = OptimizerConfig.default()
         self.assertEqual(60, instance.launcher_mapping_timeout)
 
+    def test_default__launcher_mapping_found_timeout_must_be_10_seconds(self):
+        instance = OptimizerConfig.default()
+        self.assertEqual(10, instance.launcher_mapping_found_timeout)
+
     def test_default__check_finished_interval_must_be_3_seconds(self):
         instance = OptimizerConfig.default()
         self.assertEqual(3, instance.check_finished_interval)
