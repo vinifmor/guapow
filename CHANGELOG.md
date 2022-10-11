@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## NEXT
 ### Improvements
-- Properly detecting Steam games subprocesses that need to be optimized
+- Properly detecting Steam games subprocesses that need to be optimized.
+- The optimizer service property `launcher.mapping.timeout` has now a default value of `60` (seconds).
 
 ## [1.2.2] 2022-09-22
 ### Improvements
