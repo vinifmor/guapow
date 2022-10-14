@@ -1,5 +1,4 @@
-import asyncio
-from typing import Set, Optional, Tuple
+from typing import Set, Optional
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import Mock, patch, AsyncMock, call
 
@@ -472,36 +471,25 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         async def map_pids() -> Optional[Set[int]]:
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({5661, 5662}, await map_pids())
+        mapped_pids = await map_pids()
         async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
         self.assertGreaterEqual(async_syscall.await_count, 1)
+        self.assertEqual({5661, 5662}, mapped_pids)
 
     @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
     async def test_map_pids__yield_several_ids_when_proton_command_from_runtime(self, async_syscall: AsyncMock):
-        class MockedAsyncSysCall:
-            def __init__(self):
-                self.call_count = 0
-
-            async def call(self, *args, **kwargs) -> Tuple[int, str]:
-                self.call_count += 1
-                if self.call_count == 1:
-                    return (0, """
-                    12# 123#  reaper
-                    123# 456#  pv-bwrap
-                    456# 789#  pressure-vessel
-                    789# 1011# python3
-                    789# 1213# Game_x64.exe""")  # first call just one child found
-
-                return (0, """
-                    12# 123#  reaper
-                    123# 456#  pv-bwrap
-                    456# 789#  pressure-vessel
-                    789# 1011# python3
-                    789# 1213# Game_x64.exe,
-                    789# 1214# Game_x64-thread"""  # second call one more child found
-                        )
-
-        mocked_call = MockedAsyncSysCall()
+        mocked_call = MockedAsyncCall(results=[(0, """12# 123#  reaper
+                                                      123# 456#  pv-bwrap
+                                                      456# 789#  pressure-vessel
+                                                      789# 1011# python3
+                                                      789# 1213# Game_x64.exe"""),
+                                               (0, """12# 123#  reaper
+                                                      123# 456#  pv-bwrap
+                                                      456# 789#  pressure-vessel
+                                                      789# 1011# python3
+                                                      789# 1213# Game_x64.exe
+                                                      789# 1214# Game_x64-thread""")  # one more child found
+                                               ])
         async_syscall.side_effect = mocked_call.call
 
         cmd = '/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=123 -- ' \
@@ -510,16 +498,14 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
               '/home/user/.local/share/Steam/steamapps/common/Proton 6.3/proton waitforexitandrun ' \
               '/home/user/.local/share/Steam/steamapps/common/Game II/Game_x64.exe'
 
-        self.mapper = SteamLauncherMapper(check_time=0.005,  # using a higher wait time for this test case
-                                          found_check_time=0,
+        self.mapper = SteamLauncherMapper(check_time=0.5,  # using a higher wait time for this test case
+                                          found_check_time=-1,
                                           logger=Mock())
         request = OptimizationRequest(pid=123, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
             return {pid async for pid in self.mapper.map_pids(request, profile)}
-
-        await map_pids()
 
         mapped_pids = await map_pids()
         async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
@@ -728,43 +714,28 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertEqual(set(), mapped_pids)
 
     @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
-    async def test_map_pids__it_should_stopping_yielding_if_the_last_yield_timeout_reached(self, *mocks: AsyncMock):
+    async def test_map_pids__it_should_stopping_yielding_if_found_check_time_reached(self, *mocks: AsyncMock):
         async_syscall = mocks[0]
 
-        class MockedAsyncSysCall:
-            def __init__(self):
-                self.call_count = 0
-
-            async def call(self, *args, **kwargs) -> Tuple[int, str]:
-                self.call_count += 1
-                if self.call_count < 3:  # first two calls must return the same to simulate this scenario
-                    await asyncio.sleep(0.0005)
-                    return (0, """1403#    2601# reaper
-                                  2601#    2602# ABC.x86_""")
-
-                return (0, """1403#    2601# reaper
-                              2601#    2602# ABC.x86_
-                              2601#    2603# ABC.x86_-thread""")
-
-        mocked_call = MockedAsyncSysCall()
-        async_syscall.side_effect = mocked_call.call
+        async_syscall.side_effect = [(0, "1403#    2601# reaper\n2601#    2602# ABC.x86_"),
+                                     (0, """1403#    2601# reaper
+                                            2601#    2602# ABC.x86_
+                                            2601#    2603# ABC.x86_-thread""")]
 
         cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=999999 -- " \
               "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
               "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
 
-        self.mapper = SteamLauncherMapper(check_time=0.001, found_check_time=0.0005, logger=Mock())
+        self.mapper = SteamLauncherMapper(check_time=0.1, found_check_time=0, iteration_sleep_time=0.001, logger=Mock())
         request = OptimizationRequest(pid=2601, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        await map_pids()
-
         mapped_pids = await map_pids()
         async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
-        self.assertEqual(2, async_syscall.await_count)
+        self.assertEqual(1, async_syscall.await_count)
         self.assertEqual({2602}, mapped_pids)
 
     @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
@@ -979,10 +950,7 @@ class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):
         profile = new_steam_profile(enabled=True)
 
         async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in manager.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+            return {pid async for pid in manager.map_pids(request, profile)}
 
         self.assertEqual({456}, await map_pids())
 

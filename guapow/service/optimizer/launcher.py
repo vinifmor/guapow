@@ -425,7 +425,7 @@ class SteamLauncherMapper(LauncherMapper):
 
                             yield pid
 
-                    if self._iteration_sleep_time and self._iteration_sleep_time > 0:
+                    if self._iteration_sleep_time > 0:
                         await asyncio.sleep(self._iteration_sleep_time)
 
                 self._log.debug(f"Steam subprocesses search timed out (source_pid={request.pid})")
