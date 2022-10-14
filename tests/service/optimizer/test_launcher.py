@@ -4,12 +4,11 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import Mock, patch, AsyncMock, call
 
 from guapow import __app_name__
-from guapow.common import util
 from guapow.common.dto import OptimizationRequest
 from guapow.service.optimizer.launcher import map_launchers_file, gen_possible_launchers_file_paths, \
     LauncherSearchMode, map_launchers_dict, ExplicitLauncherMapper, SteamLauncherMapper, LauncherMapperManager
 from guapow.service.optimizer.profile import OptimizationProfile, LauncherSettings
-from tests import RESOURCES_DIR, AsyncIterator
+from tests import RESOURCES_DIR, AsyncIterator, MockedAsyncCall
 
 
 def new_steam_profile(enabled: bool) -> OptimizationProfile:
@@ -94,234 +93,313 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.logger = Mock()
-        self.mapper = ExplicitLauncherMapper(check_time=30, found_check_time=0, logger=self.logger)
+        self.mapper = ExplicitLauncherMapper(check_time=0.1, found_check_time=0, logger=self.logger)
 
     @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', side_effect=FileNotFoundError)
-    async def test_map_pids__return_none_when_there_is_no_possible_launchers_file_available(self, map_launchers: Mock):
+    async def test_map_pids__it_should_not_yield_when_no_launcher_files_available(self, map_launchers: Mock):
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         self.assertFalse(await map_pids())
 
         exp_file_paths = gen_possible_launchers_file_paths(user_id=123, user_name='user')
         map_launchers.assert_has_calls([call(fpath, self.logger) for fpath in exp_file_paths])
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'game': ('game_x86_64.bin', LauncherSearchMode.NAME)})
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, 'game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_launcher_mapped_name(self, *mocks: Mock):
-        find_process_by_name, map_launchers = mocks[0], mocks[1]
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_only_one_name_match(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+        async_syscall.return_value = (0, "456# game_x86_64.bin\n789# other")
+        map_launchers.return_value = {"game": ("game_x86_64.bin", LauncherSearchMode.NAME)}
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        find_process_by_name.assert_awaited_once_with(util.map_any_regex('game_x86_64.bin'), last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%c" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', side_effect=[FileNotFoundError, {'game': ('game_x86_64.bin', LauncherSearchMode.NAME)}])
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, 'game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_etc_launchers_file_when_user_file_does_not_exist(self, *mocks: Mock):
-        find_process_by_name, map_launchers = mocks[0], mocks[1]
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pids_for_several_name_matches(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+        async_syscall.return_value = (0, "456# game_x86_64.bin\n789# other\n1011# game_x86_64.bin")
+        map_launchers.return_value = {"game": ("game_x86_64.bin", LauncherSearchMode.NAME)}
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
+
+        exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
+        map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%c" -ww --no-headers')
+
+        self.assertEqual({456, 1011}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_matched_etc_launchers_file_when_no_user_file(self, *mocks: Mock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        map_launchers.side_effect = [FileNotFoundError, {'game': ('game_x86_64.bin', LauncherSearchMode.NAME)}]
+        async_syscall.return_value = (0, "456# game_x86_64.bin\n789# other\n")
+
+        request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
+        profile = new_steam_profile(enabled=False)
+
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_has_calls([call(fpath, self.logger) for fpath in exp_file_paths])
-        find_process_by_name.assert_awaited_once_with(util.map_any_regex('game_x86_64.bin'), last_match=True)
+        async_syscall.assert_awaited_with('ps -Ao "%p#%c" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'game': ('game_x86_64.bin', LauncherSearchMode.NAME)})
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, 'game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_etc_launchers_file_for_root_call(self, *mocks: Mock):
-        find_process_by_name, map_launchers = mocks[0], mocks[1]
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_matched_etc_launchers_file_for_root_user_call(self, *mocks: Mock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+        map_launchers.return_value = {'game': ('game_x86_64.bin', LauncherSearchMode.NAME)}
+        async_syscall.return_value = (0, "456# game_x86_64.bin\n789# other\n")
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='root')
         request.user_id = 0
 
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once_with(f'/etc/{__app_name__}/launchers', self.logger)
-        find_process_by_name.assert_awaited_once_with(util.map_any_regex('game_x86_64.bin'), last_match=True)
+        async_syscall.assert_awaited_with('ps -Ao "%p#%c" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'game': ('/path/to/game_x86_64.bin', LauncherSearchMode.COMMAND)})
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, '/path/to/game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_launcher_mapped_cmd(self, *mocks: Mock):
-        find_process_by_command, map_launchers = mocks[0], mocks[1]
+        self.assertEqual(mapped_pids, await map_pids())
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_only_one_matched_launcher_mapped_cmd(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        map_launchers.return_value = {'game': ('/path/to/game_x86_64.bin', LauncherSearchMode.COMMAND)}
+        async_syscall.return_value = (0, "456# /path/to/game_x86_64.bin\n789# other\n")
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
-
+        mapped_pids = await map_pids()
         map_launchers.assert_awaited_once()
-        find_process_by_command.assert_awaited_once_with({util.map_any_regex('/path/to/game_x86_64.bin')}, last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%a" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'game': (' *game_x86_64.bin ', LauncherSearchMode.NAME)})
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, '/game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_launcher_mapped_name_regex(self, *mocks: Mock):
-        find_process_by_name, map_launchers = mocks[0], mocks[1]
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_mapped_name_regex(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        map_launchers.return_value = {'game': (' *game_x86_64.bin ', LauncherSearchMode.NAME)}
+        async_syscall.return_value = (0, "456# /game_x86_64.bin\n789# other\n")
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        find_process_by_name.assert_awaited_once_with(util.map_any_regex(' *game_x86_64.bin '), last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%c" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'game': ('/*game_x86_64.bin ', LauncherSearchMode.COMMAND)})
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, '/game_x86_64.bin'))
-    async def test_map_pids__return_pid_for_matched_launcher_mapped_cmd_regex(self, *mocks: Mock):
-        find_process_by_command, map_launchers = mocks[0], mocks[1]
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_mapped_cmd_regex(self, *mocks: Mock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        map_launchers.return_value = {'game': ('/*game_x86_64.bin ', LauncherSearchMode.COMMAND)}
+        async_syscall.return_value = (0, "456# /game_x86_64.bin\n789# other\n")
 
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once()
-        find_process_by_command.assert_awaited_once_with({util.map_any_regex('/*game_x86_64.bin ')}, last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%a" -ww --no-headers')
 
-    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file', return_value={'hl2.sh*': ('hl2.linux', LauncherSearchMode.NAME)})
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=(456, 'hl2.linux'))
-    async def test_map_pids__return_pid_for_matched_launcher_using_a_wild_card(self, *mocks: Mock):
-        find_process_by_name, map_launchers = mocks[0], mocks[1]
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_matched_launcher_using_a_wild_card(self, *mocks: Mock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        map_launchers.return_value = {'hl2.sh*': ('hl2.linux', LauncherSearchMode.NAME)}
+        async_syscall.return_value = (0, "456# hl2.linux\n789# other\n")
 
         cmd = '/home/user/.local/share/Steam/steamapps/common/Team Fortress 2/hl2.sh -game tf -steam'
         request = OptimizationRequest(pid=123, command=cmd, user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once()
-        find_process_by_name.assert_awaited_once_with(util.map_any_regex('hl2.linux'), last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%c" -ww --no-headers')
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, '/bin/proc_abc'))
-    async def test_map_pids__return_pid_for_matched_launcher_defined_via_profile(self, find_process_by_command: Mock):
+        self.assertEqual({456}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_matched_launcher_via_profile(self, async_syscall: AsyncMock):
+        async_syscall.return_value = (0, "456# /bin/proc_abc\n789# other\n")
+
         request = OptimizationRequest(pid=123, command='/home/user/.local/bin/proc1', user_name='user')
         profile = OptimizationProfile.empty('test')
         profile.launcher = LauncherSettings({'proc1': 'c%/bin/proc_abc'}, None)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
-        find_process_by_command.assert_awaited_once_with({util.map_any_regex('/bin/proc_abc')}, last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%a" -ww --no-headers')
+        self.assertEqual({456}, mapped_pids)
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=(456, '/bin/proc_abc'))
-    async def test_map_pids__return_pid_for_matched_launcher_defined_via_profile_using_wildcards(self, *mocks: Mock):
-        find_process_by_command = mocks[0]
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_matched_launcher_via_profile_using_wildcards(self, *mocks: Mock):
+        async_syscall = mocks[0]
+        async_syscall.return_value = (0, "456# /bin/proc_abc\n789# other\n")
+
         request = OptimizationRequest(pid=123, command='/home/user/.local/bin/proc1', user_name='user')
         profile = OptimizationProfile.empty('test')
         profile.launcher = LauncherSettings({'proc1': 'c%/bin/proc_*'}, False)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertEqual({456}, await map_pids())
+        mapped_pids = await map_pids()
 
-        find_process_by_command.assert_awaited_once_with({util.map_any_regex('/bin/proc_*')}, last_match=True)
+        async_syscall.assert_awaited_once_with('ps -Ao "%p#%a" -ww --no-headers')
+        self.assertEqual({456}, mapped_pids)
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=None)
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=None)
-    async def test_map_pids__return_none_for_when_defined_launchers_via_profile_are_invalid(self, *mocks: Mock):
-        find_process_by_command, find_latest_process_by_cmd = mocks[0], mocks[1]
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_not_yield_when_defined_launchers_via_profile_are_invalid(self, *mocks: Mock):
+        async_syscall = mocks[0]
 
         request = OptimizationRequest(pid=123, command='/home/user/.local/bin/proc1', user_name='user')
         profile = OptimizationProfile.empty('test')
         profile.launcher = LauncherSettings({'proc1': ''}, None)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertFalse(await map_pids())
+        mapped_pids = await map_pids()
 
-        find_latest_process_by_cmd.assert_not_awaited()
-        find_process_by_command.assert_not_awaited()
+        async_syscall.assert_not_awaited()
+        self.assertEqual(set(), mapped_pids)
 
-    @patch(f'{__app_name__}.common.system.find_process_by_command', return_value=None)
-    @patch(f'{__app_name__}.common.system.find_process_by_name', return_value=None)
-    async def test_map_pids__return_none_when_skip_mapping_is_true(self, *mocks: Mock):
-        find_process_by_name, find_process_by_command = mocks[0], mocks[1]
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_not_yield_when_skip_mapping_is_true(self, async_syscall: AsyncMock):
         request = OptimizationRequest(pid=123, command='/home/user/.local/bin/proc1', user_name='user')
         profile = OptimizationProfile.empty('test')
         profile.launcher = LauncherSettings({'proc1': '/bin/proc1'}, True)
 
-        async def map_pids() -> Optional[Set[int]]:
-            pids = set()
-            async for pid in self.mapper.map_pids(request, profile):
-                pids.add(pid)
-            return pids
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
 
-        self.assertFalse(await map_pids())
+        mapped_pids = await map_pids()
 
-        find_process_by_command.assert_not_awaited()
-        find_process_by_name.assert_not_awaited()
+        async_syscall.assert_not_awaited()
+        self.assertEqual(set(), mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_yield_pid_for_several_matches_while_not_timed_out(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        mocked_call = MockedAsyncCall(results=[(0, "456# game_x86_64.bin\n789# other\n"),
+                                               (0, "456# game_x86_64.bin\n789# other\n1011# game_x86_64.bin")],
+                                      await_time=0.0005)
+        async_syscall.side_effect = mocked_call.call
+
+        map_launchers.return_value = {"game": ("game_x86_64.bin", LauncherSearchMode.NAME)}
+
+        request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
+        profile = new_steam_profile(enabled=False)
+
+        self.mapper = ExplicitLauncherMapper(check_time=0.01, found_check_time=-1, iteration_sleep_time=0,
+                                             logger=self.logger)
+
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+
+        exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
+        map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
+        async_syscall.assert_awaited_with('ps -Ao "%p#%c" -ww --no-headers')
+        self.assertGreaterEqual(async_syscall.await_count, 2)
+
+        self.assertEqual({456, 1011}, mapped_pids)
+
+    @patch(f'{__app_name__}.service.optimizer.launcher.map_launchers_file')
+    @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
+    async def test_map_pids__it_should_stop_yielding_when_found_timeout_is_reached(self, *mocks: AsyncMock):
+        async_syscall, map_launchers = mocks[0], mocks[1]
+
+        async_syscall.side_effect = [(0, "456# game_x86_64.bin\n789# other\n"),
+                                     (0, "456# game_x86_64.bin\n789# other\n1011# game_x86_64.bin")]
+
+        map_launchers.return_value = {"game": ("game_x86_64.bin", LauncherSearchMode.NAME)}
+
+        request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
+        profile = new_steam_profile(enabled=False)
+
+        # setting 'found_check_time' to zero, so the next iteration wouldn't happen
+        self.mapper = ExplicitLauncherMapper(check_time=0.1, found_check_time=0, iteration_sleep_time=0,
+                                             logger=self.logger)
+
+        async def map_pids() -> Set[int]:
+            return {pid async for pid in self.mapper.map_pids(request, profile)}
+
+        mapped_pids = await map_pids()
+
+        exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
+        map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
+        async_syscall.assert_awaited_with('ps -Ao "%p#%c" -ww --no-headers')
+        self.assertEqual(1, async_syscall.await_count)
+
+        self.assertEqual({456}, mapped_pids)
 
 
 class SteamLauncherMapperTest(IsolatedAsyncioTestCase):

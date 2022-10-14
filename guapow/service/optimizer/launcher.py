@@ -8,7 +8,7 @@ from typing import Dict, Optional, Tuple, Generator, AsyncGenerator, Pattern, Se
 import aiofiles
 
 from guapow import __app_name__
-from guapow.common import util, system
+from guapow.common import util
 from guapow.common.dto import OptimizationRequest
 from guapow.common.model import CustomEnum
 from guapow.common.system import async_syscall
@@ -119,36 +119,79 @@ class ExplicitLauncherMapper(LauncherMapper):
     For mappings declared in the 'launchers' file
     """
 
-    def __init__(self, check_time: float, found_check_time: float, logger: Logger):
+    def __init__(self, check_time: float, found_check_time: float, logger: Logger,
+                 iteration_sleep_time: float = 0.1):
         super(ExplicitLauncherMapper, self).__init__(check_time=check_time,
                                                      found_check_time=found_check_time,
                                                      logger=logger)
+        self._iteration_sleep_time = iteration_sleep_time
 
-    async def _find_wrapped_process(self, wrapped_target: Tuple[str, LauncherSearchMode], launcher: str) -> Optional[int]:
-        wrapped_name, search_mode = wrapped_target[0], wrapped_target[1]
+    @staticmethod
+    async def map_process_by_pid(mode: LauncherSearchMode, ignore: Set[int]) -> Optional[Dict[int, str]]:
+        if mode:
+            mode_str = "a" if mode == LauncherSearchMode.COMMAND else "c"
+            exitcode, output = await async_syscall(f'ps -Ao "%p#%{mode_str}" -ww --no-headers')
+
+            if exitcode == 0 and output:
+                pid_comm = dict()
+
+                for line in output.split("\n"):
+                    line_strip = line.strip()
+
+                    if line_strip:
+                        line_split = line_strip.split('#', 1)
+
+                        if len(line_split) > 1:
+                            try:
+                                pid = int(line_split[0])
+                            except ValueError:
+                                continue
+
+                            if pid in ignore:
+                                continue
+
+                            pid_comm[pid] = line_split[1].strip()
+
+                return pid_comm
+
+    async def find_wrapped_process(self, wrapped_target: Tuple[str, LauncherSearchMode], launcher: str,
+                                   source_pid: int) -> AsyncGenerator[int, None]:
+        wrapped_name, search_mode = wrapped_target[0].strip(), wrapped_target[1]
         wrapped_regex = util.map_any_regex(wrapped_name)
-        wrapped_regexes = {wrapped_regex}
-        self._log.debug(f"Looking for mapped process with {search_mode.name.lower()} '{wrapped_name}' (launcher={launcher})")
+        self._log.debug(f"Looking for mapped process with {search_mode.name.lower()} '{wrapped_name}' "
+                        f"(launcher={launcher})")
 
+        latest_found_timeout = None
+        found = set()
         time_init = datetime.now()
-        time_limit = time_init + timedelta(seconds=self._check_time)
+        timeout = time_init + timedelta(seconds=self._check_time)
+        while datetime.now() < timeout:
+            if latest_found_timeout and datetime.now() >= latest_found_timeout:
+                self._log.debug(f"Launcher mapping search timed out earlier (source_pid={source_pid})")
+                return
 
-        while datetime.now() < time_limit:
-            if search_mode == LauncherSearchMode.COMMAND:
-                wrapped_proc = await system.find_process_by_command(wrapped_regexes, last_match=True)
-            else:
-                wrapped_proc = await system.find_process_by_name(wrapped_regex, last_match=True)
+            pid_process = await self.map_process_by_pid(search_mode, ignore=found)
 
-            if wrapped_proc is not None:
-                find_time = (datetime.now() - time_init).total_seconds()
-                pid_found, name_found = wrapped_proc[0], wrapped_proc[1]
-                self._log.info(f"Mapped process '{name_found}' ({pid_found}) found in {find_time:.2f} seconds")
-                return pid_found
-            else:
-                await asyncio.sleep(0.001)
+            if pid_process:
+                for pid, command in pid_process.items():
+                    if wrapped_regex.match(command):
+                        find_time = (datetime.now() - time_init).total_seconds()
 
-        find_time = (datetime.now() - time_init).total_seconds()
-        self._log.warning(f"Could not find process with {search_mode.name.lower()} '{wrapped_name}' (launcher={launcher}). Timed out in {find_time:.2f} seconds")
+                        if self._found_check_time >= 0:
+                            latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
+
+                        self._log.info(f"Mapped process '{command}' ({pid}) found in {find_time:.2f} seconds")
+                        yield pid
+                        found.add(pid)
+
+            if self._iteration_sleep_time > 0:
+                await asyncio.sleep(self._iteration_sleep_time)
+
+        if not found:
+            timeout_secs = (datetime.now() - time_init).total_seconds()
+            self._log.warning(f"Could not find process with {search_mode.name.lower()} '{wrapped_name}' "
+                              f"(launcher={launcher}, source_pid={source_pid}). "
+                              f"Timed out in {timeout_secs:.2f} seconds")
 
     async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         if profile.launcher and profile.launcher.skip_mapping:
@@ -182,10 +225,8 @@ class ExplicitLauncherMapper(LauncherMapper):
                             break
 
             if wrapped_target:
-                pid_found = await self._find_wrapped_process(wrapped_target, file_name)
-
-                if pid_found is not None:
-                    yield pid_found
+                async for pid in self.find_wrapped_process(wrapped_target, file_name, request.pid):
+                    yield pid
 
         else:
             self._log.debug("No valid launchers mapped found")

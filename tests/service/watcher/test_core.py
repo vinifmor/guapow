@@ -1,6 +1,6 @@
 import re
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock, patch, call, AsyncMock
 
 from guapow import __app_name__
 from guapow.common.config import OptimizerConfig
@@ -14,7 +14,8 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.context = ProcessWatcherContext(user_id=1, user_name='xpto', user_env={'a': '1'}, logger=Mock(),
-                                             mapping_file_path='test.map', optimized={}, opt_config=OptimizerConfig.default(),
+                                             mapping_file_path='test.map', optimized={},
+                                             opt_config=OptimizerConfig.default(),
                                              watch_config=ProcessWatcherConfig.default(), machine_id='abc126517ha',
                                              ignored_procs=dict(), ignored_file_path='test.ignore')
         self.watcher = ProcessWatcher(regex_mapper=RegexMapper(cache=False, logger=Mock()), context=self.context)
@@ -22,9 +23,13 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.service.watcher.core.mapping.read', return_value=(False, None))
     @patch(f'{__app_name__}.service.watcher.core.ignored.read', return_value=(False, None))
     @patch(f'{__app_name__}.service.watcher.core.map_processes')
-    async def test_check_mappings__must_not_map_processes_when_no_mapping_is_found(self, map_processes: Mock, ignored_read: Mock, mapping_read: Mock):
+    async def test_check_mappings__must_not_map_processes_when_no_mapping_is_found(self, *mocks: AsyncMock):
+        map_processes, ignored_read, mapping_read = mocks
+
         await self.watcher.check_mappings()
-        mapping_read.assert_called_once_with(file_path=self.context.mapping_file_path, logger=self.context.logger, last_file_found_log=None)
+        mapping_read.assert_called_once_with(file_path=self.context.mapping_file_path,
+                                             logger=self.context.logger,
+                                             last_file_found_log=None)
         ignored_read.assert_not_called()
         map_processes.assert_not_called()
 
@@ -328,15 +333,23 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         send_async.assert_has_calls([call(req_a, self.context.opt_config, self.context.machine_id, self.context.logger)], any_order=True)
         self.assertEqual({1: 'abacaxi'}, self.context.optimized)
 
-    @patch(f'{__app_name__}.service.watcher.core.mapping.read', return_value=(True, {'a*': 'default', '/bin/*': 'prof_1', '/local/d': 'prof_2'}))
-    @patch(f'{__app_name__}.service.watcher.core.ignored.read', return_value=(False, None))
-    @patch(f'{__app_name__}.service.watcher.core.map_processes', side_effect=[{1: ('/local/bin/abacaxi', 'abacaxi'),
-                                                                                       2: ('/bin/b', 'b'),
-                                                                                       3: ('/bin/c', 'c')},
-                                                                                      {4: ('/xpto', 'xpto')}])
-    @patch(f'{__app_name__}.service.watcher.core.network.send', return_value=True)
-    @patch(f'{__app_name__}.service.watcher.core.time.time', return_value=12345)
-    async def test_check_mappings__must_cache_mapping_when_defined_on_config(self, time: Mock, send_async: Mock, map_processes: Mock, ignored_read: Mock, mapping_read: Mock):
+    @patch(f'{__app_name__}.service.watcher.core.mapping.read')
+    @patch(f'{__app_name__}.service.watcher.core.ignored.read')
+    @patch(f'{__app_name__}.service.watcher.core.map_processes')
+    @patch(f'{__app_name__}.service.watcher.core.network.send')
+    @patch(f'{__app_name__}.service.watcher.core.time.time')
+    async def test_check_mappings__must_cache_mapping_when_defined_on_config(self, *mocks: AsyncMock):
+        time, send, map_processes, ignored_read, mapping_read = mocks
+
+        mapping_read.return_value = (True, {'a*': 'default', '/bin/*': 'prof_1', '/local/d': 'prof_2'})
+        ignored_read.return_value = (False, None)
+        map_processes.side_effect = [{1: ('/local/bin/abacaxi', 'abacaxi'),
+                                      2: ('/bin/b', 'b'),
+                                      3: ('/bin/c', 'c')},
+                                     {4: ('/xpto', 'xpto')}]
+        send.return_value = True
+        time.return_value = 12345
+
         self.assertIsNone(self.watcher._mappings)
         self.assertIsNone(self.watcher._cmd_patterns)
         self.assertIsNone(self.watcher._comm_patterns)
@@ -354,15 +367,16 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         req_c = OptimizationRequest(pid=3, command='/bin/c', user_name=self.context.user_name,
                                     user_env=self.context.user_env, profile='prof_1', created_at=12345)
 
-        send_async.assert_has_calls([call(req_a, self.context.opt_config, self.context.machine_id, self.context.logger),
-                                     call(req_b, self.context.opt_config, self.context.machine_id, self.context.logger),
-                                     call(req_c, self.context.opt_config, self.context.machine_id, self.context.logger)], any_order=True)
+        send.assert_has_calls([call(req_a, self.context.opt_config, self.context.machine_id, self.context.logger),
+                               call(req_b, self.context.opt_config, self.context.machine_id, self.context.logger),
+                               call(req_c, self.context.opt_config, self.context.machine_id, self.context.logger)],
+                              any_order=True)
 
         self.assertEqual({1: 'abacaxi', 2: '/bin/b', 3: '/bin/c'}, self.context.optimized)
 
         self.assertEqual({'a*': 'default', '/bin/*': 'prof_1', '/local/d': 'prof_2'}, self.watcher._mappings)
-        self.assertEqual({re.compile(r'^/bin/.+$'): 'prof_1'}, self.watcher._cmd_patterns)
-        self.assertEqual({re.compile(r'^a.+$'): 'default'}, self.watcher._comm_patterns)
+        self.assertEqual({re.compile(r'^/bin/.*$'): 'prof_1'}, self.watcher._cmd_patterns)
+        self.assertEqual({re.compile(r'^a.*$'): 'default'}, self.watcher._comm_patterns)
 
         # second call
         await self.watcher.check_mappings()
@@ -449,8 +463,8 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         map_processes.assert_called_once()
         send_async.assert_not_called()
         self.assertEqual({}, self.context.optimized)
-        self.assertEqual({re.compile(r'^de.+$'): {'123:def'},
-                          re.compile(r'^/bin/a.+$'): {'456:abc'},
+        self.assertEqual({re.compile(r'^de.*$'): {'123:def'},
+                          re.compile(r'^/bin/a.*$'): {'456:abc'},
                           'ghi': {'789:ghi'}}, self.context.ignored_procs)
         self.assertFalse(self.watcher._ignored_cached)  # ensuring nothing was cached (when disabled)
 
@@ -487,8 +501,8 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
     async def test_check_mappings__must_clean_ignored_context_when_pattern_is_no_long_returned(self, *mocks: Mock):
         send_async, map_processes, ignored_read, mapping_read = mocks
 
-        self.context.ignored_procs.update({re.compile(r'^de.+$'): {'123:def'},
-                                           re.compile(r'^/bin/a.+$'): {'456:abc'},
+        self.context.ignored_procs.update({re.compile(r'^de.*$'): {'123:def'},
+                                           re.compile(r'^/bin/a.*$'): {'456:abc'},
                                            'ghi': {'789:ghi'}})
         await self.watcher.check_mappings()
         mapping_read.assert_called_once_with(file_path=self.context.mapping_file_path,
@@ -498,7 +512,7 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         map_processes.assert_called_once()
         self.assertEqual(2, send_async.call_count)
         self.assertEqual(2, len(self.context.optimized))
-        self.assertEqual({re.compile(r'^de.+$'): {'123:def'}}, self.context.ignored_procs)
+        self.assertEqual({re.compile(r'^de.*$'): {'123:def'}}, self.context.ignored_procs)
 
     @patch(f'{__app_name__}.service.watcher.core.mapping.read', return_value=(True, {'def': 'default',
                                                                                      'abc': 'default'}))
@@ -508,8 +522,8 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
     async def test_check_mappings__must_clean_ignored_context_when_ignored_proc_stops(self, *mocks: Mock):
         send_async, map_processes, ignored_read, mapping_read = mocks
 
-        self.context.ignored_procs.update({r'^de.+$': {'123:def'},
-                                           r'^/bin/a.+$': {'456:abc'},
+        self.context.ignored_procs.update({r'^de.*$': {'123:def'},
+                                           r'^/bin/a.*$': {'456:abc'},
                                            'ghi': {'789:ghi'}})
         await self.watcher.check_mappings()
         mapping_read.assert_called_once_with(file_path=self.context.mapping_file_path,
@@ -519,7 +533,7 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         map_processes.assert_called_once()
         self.assertEqual(0, send_async.call_count)
         self.assertEqual(0, len(self.context.optimized))
-        self.assertEqual({re.compile(r'^de.+$'): {'123:def'}}, self.context.ignored_procs)
+        self.assertEqual({re.compile(r'^de.*$'): {'123:def'}}, self.context.ignored_procs)
 
     @patch(f'{__app_name__}.service.watcher.core.mapping.read', return_value=(True, {'def': 'default',
                                                                                      'abc': 'default',
@@ -543,15 +557,15 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
 
         self.assertTrue(self.watcher._ignored_cached)
         self.assertEqual({'ghi', 'de*', '/bin/a*'}, self.watcher._ignored_exact_strs)
-        self.assertEqual({re.compile(r'^/bin/a.+$')}, self.watcher._ignored_cmd_patterns)
-        self.assertEqual({re.compile(r'^de.+$')}, self.watcher._ignored_comm_patterns)
+        self.assertEqual({re.compile(r'^/bin/a.*$')}, self.watcher._ignored_cmd_patterns)
+        self.assertEqual({re.compile(r'^de.*$')}, self.watcher._ignored_comm_patterns)
 
         await self.watcher.check_mappings()  # second call
 
         self.assertTrue(self.watcher._ignored_cached)
         self.assertEqual({'ghi', 'de*', '/bin/a*'}, self.watcher._ignored_exact_strs)
-        self.assertEqual({re.compile(r'^/bin/a.+$')}, self.watcher._ignored_cmd_patterns)
-        self.assertEqual({re.compile(r'^de.+$')}, self.watcher._ignored_comm_patterns)
+        self.assertEqual({re.compile(r'^/bin/a.*$')}, self.watcher._ignored_cmd_patterns)
+        self.assertEqual({re.compile(r'^de.*$')}, self.watcher._ignored_comm_patterns)
 
         ignored_read.assert_called_once()
         self.assertEqual(2, mapping_read.call_count)
@@ -559,8 +573,8 @@ class ProcessWatcherTest(IsolatedAsyncioTestCase):
         send_async.assert_not_called()
 
         self.assertEqual({}, self.context.optimized)
-        self.assertEqual({re.compile(r'^de.+$'): {'123:def'},
-                          re.compile(r'^/bin/a.+$'): {'456:abc'},
+        self.assertEqual({re.compile(r'^de.*$'): {'123:def'},
+                          re.compile(r'^/bin/a.*$'): {'456:abc'},
                           'ghi': {'789:ghi'}}, self.context.ignored_procs)
 
     @patch(f'{__app_name__}.service.watcher.core.mapping.read', return_value=(True, {'def': 'default',

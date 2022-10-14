@@ -4,7 +4,7 @@ from unittest import TestCase
 from guapow.common import util
 
 
-class MapAnyRegex(TestCase):
+class MapAnyRegexTest(TestCase):
 
     def test_map_any_regex__should_preserve_str_when_no_asterisk(self):
         regex = util.map_any_regex(' abc ')
@@ -16,14 +16,14 @@ class MapAnyRegex(TestCase):
         regex = util.map_any_regex(' *****ab****c**** ')
         self.assertIsNotNone(regex)
         self.assertIsInstance(regex, Pattern)
-        self.assertEqual(r'^\ .+ab.+c.+\ $', regex.pattern)
+        self.assertEqual(r'^\ .*ab.*c.*\ $', regex.pattern)
         self.assertIsNotNone(regex.match(' xptoab tralalac pqpwq '))
 
     def test_map_any_regex__should_escape_backlashes(self):
         regex = util.map_any_regex("\*Win64\MVCI.exe")
         self.assertIsNotNone(regex)
         self.assertIsInstance(regex, Pattern)
-        self.assertEqual(r'^\\.+Win64\\MVCI\.exe$', regex.pattern)
+        self.assertEqual(r'^\\.*Win64\\MVCI\.exe$', regex.pattern)
         self.assertIsNotNone(regex.match(r'\path\to\Win64\MVCI.exe'))
 
 
