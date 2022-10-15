@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.3.0]
 ### Improvements
-- Properly detecting Steam games subprocesses that need to be optimized (no need to map launchers anymore)
+- Properly detecting all Steam games subprocesses that need to be optimized (no need to map launchers anymore)
 - Launcher mapping now optimizes all matches instead of just the last born process
 - New optimizer service property `launcher.mapping.found_timeout`: maximum time in *seconds* to still keep looking for a process mapped to a different process after a match. This property also affects the period to look for Steam subprocesses. (default: `10`)
 - The optimizer service property `launcher.mapping.timeout` has now a default value of `60` (seconds)
