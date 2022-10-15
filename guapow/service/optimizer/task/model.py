@@ -17,7 +17,7 @@ class OptimizationContext:
     def __init__(self, gpu_man: Optional[GPUManager], logger: Optional[Logger],
                  cpufreq_man: Optional[CPUFrequencyManager], cpuenergy_man: Optional[CPUEnergyPolicyManager],
                  mouse_man: Optional[MouseCursorManager], queue: Optional[OptimizationQueue], cpu_count: int,
-                 launcher_mapping_timeout: float, renicer_interval: float,
+                 launcher_mapping_timeout: float, launcher_mapping_found_timeout: float, renicer_interval: float,
                  compositor: Optional[WindowCompositor] = None,  allow_root_scripts: bool = False,
                  compositor_disabled_context: Optional[dict] = None,
                  system_service: bool = False, gpu_ids: Optional[Set[str]] = None):
@@ -32,6 +32,7 @@ class OptimizationContext:
         self.compositor = compositor
         self.allow_root_scripts = allow_root_scripts
         self.launcher_mapping_timeout = launcher_mapping_timeout
+        self.launcher_mapping_found_timeout = launcher_mapping_found_timeout
         self.compositor_disabled_context = compositor_disabled_context  # if the compositor was disabled by the Optimizer
         self.renicer_interval = renicer_interval
         self.system_service = system_service
@@ -40,7 +41,8 @@ class OptimizationContext:
     @classmethod
     def empty(cls) -> "OptimizationContext":
         return cls(gpu_man=None, mouse_man=None, logger=None, cpufreq_man=None, queue=None,
-                   cpu_count=0, launcher_mapping_timeout=0, renicer_interval=0, cpuenergy_man=None)
+                   cpu_count=0, launcher_mapping_timeout=0, renicer_interval=0, cpuenergy_man=None,
+                   launcher_mapping_found_timeout=0)
 
     async def is_mouse_cursor_hidden(self) -> Optional[bool]:
         return await self.mouse_man.is_cursor_hidden() if self.mouse_man else None
@@ -69,20 +71,30 @@ class OptimizedProcess:
     def __init__(self, request: OptimizationRequest, created_at: float, profile: Optional[OptimizationProfile] = None,
                  previous_gpus_states: Optional[Dict[Type[GPUDriver], Set[GPUState]]] = None,
                  previous_cpu_state: Optional[CPUState] = None, stopped_after_launch: Optional[Dict[str, str]] = None,
-                 cpu_energy_policy_changed: bool = False):
+                 cpu_energy_policy_changed: bool = False, alive: bool = True, related_pids: Optional[Set[int]] = None,
+                 pid: Optional[int] = None):
         self.created_at = created_at
         self.request = request
         self.profile = profile
         self.previous_gpus_states = previous_gpus_states
         self.previous_cpu_state = previous_cpu_state
         self.stopped_after_launch = stopped_after_launch
-        self.alive = True
-        self.related_pids = {*self.request.related_pids} if self.request and self.request.related_pids else set()
-        self.pid = request.pid if self.request else None
+        self.alive = alive
+
+        if related_pids is not None:
+            self.related_pids = related_pids
+        else:
+            self.related_pids = {*self.request.related_pids} if self.request and self.request.related_pids else set()
+
+        if pid is not None:
+            self.pid = pid
+        else:
+            self.pid = request.pid if self.request else None
+
         self.cpu_energy_policy_changed = cpu_energy_policy_changed
 
     def should_be_watched(self) -> bool:
-        return bool(self.pid is not None and any([self.related_pids,
+        return bool(self.pid is not None and any((self.related_pids,
                                                   self.previous_cpu_state,
                                                   self.previous_gpus_states,
                                                   self.post_scripts,
@@ -90,7 +102,7 @@ class OptimizedProcess:
                                                   self.stopped_processes,
                                                   self.requires_mouse_hidden,
                                                   self.stopped_after_launch,
-                                                  self.cpu_energy_policy_changed]))
+                                                  self.cpu_energy_policy_changed)))
 
     @property
     def source_pid(self) -> Optional[int]:
@@ -143,26 +155,20 @@ class OptimizedProcess:
 
             return pids
 
-    def __eq__(self, other):
-        if not isinstance(other, OptimizedProcess):
-            return False
+    def __eq__(self, other) -> bool:
+        if isinstance(other, OptimizedProcess):
+            return self.__dict__ == other.__dict__
 
-        for p, v in self.__dict__.items():
-            if v != getattr(other, p):
-                return False
+        return False
 
-        return True
-
-    def __hash__(self):
-        hash_sum = 0
-
-        for _, v in sorted(self.__dict__.items()):
-            hash_sum += hash(v)
-
-        return hash_sum
+    def __hash__(self) -> int:
+        return sum(hash(v) for v in self.__dict__.values())
 
     def __repr__(self):
         return f'{self.__class__.__name__} {self.__dict__}'
+
+    def clone(self) -> "OptimizedProcess":
+        return OptimizedProcess(**self.__dict__)
 
 
 class Task(ABC):

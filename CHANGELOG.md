@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.3.0] 2022-09-15
+### Improvements
+- Properly detecting all Steam games subprocesses that need to be optimized (no need to map launchers anymore)
+- Launcher mapping now optimizes all matches instead of just the last born process
+- New optimizer service property `launcher.mapping.found_timeout`: maximum time in *seconds* to still keep looking for a process mapped to a different process after a match. This property also affects the period to look for Steam subprocesses. (default: `10`)
+- The optimizer service property `launcher.mapping.timeout` has now a default value of `60` (seconds)
+
+### Fix
+- wild card mapping to proper regex pattern
+
 ## [1.2.2] 2022-09-22
 ### Improvements
 - Minor code refactoring and log improvements regarding AMD GPU management

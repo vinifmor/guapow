@@ -15,8 +15,8 @@ class RegexMapperTest(TestCase):
         cmd_profs = {'abc': 'default', '/*/xpto': 'prof', 'def*abc*': 'prof2'}
         pattern_mappings = self.mapper.map_for_profiles(cmd_profs)
         self.assertIsInstance(pattern_mappings, tuple)
-        self.assertEqual({re.compile(r'^/.+/xpto$'): 'prof'}, pattern_mappings[0])  # cmd
-        self.assertEqual({re.compile(r'^def.+abc.+$'): 'prof2'}, pattern_mappings[1])  # comm
+        self.assertEqual({re.compile(r'^/.*/xpto$'): 'prof'}, pattern_mappings[0])  # cmd
+        self.assertEqual({re.compile(r'^def.*abc.*$'): 'prof2'}, pattern_mappings[1])  # comm
 
     def test_map_for_profiles__must_return_pattern_keys_when_key_starts_with_python_regex_pattern(self):
         cmd_profs = {'abc': 'default', 'r:/.+/xpto': 'prof', 'r:def.+abc\d+': 'prof2'}
@@ -39,7 +39,7 @@ class RegexMapperTest(TestCase):
 
         self.assertIsNone(self.mapper.get_cached_pattern('abc'))
         self.assertEqual(re.compile(r'^/.+/xpto$'), self.mapper.get_cached_pattern('r:/.+/xpto'))
-        self.assertEqual(re.compile(r'^def.+ihk.+$'), self.mapper.get_cached_pattern('def*ihk*'))
+        self.assertEqual(re.compile(r'^def.*ihk.*$'), self.mapper.get_cached_pattern('def*ihk*'))
 
         self.assertTrue(self.mapper.is_cached_as_no_pattern('abc'))
 

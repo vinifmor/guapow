@@ -1,5 +1,6 @@
+import asyncio
 import os
-from typing import Iterable
+from typing import Iterable, Optional, Any, List
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 RESOURCES_DIR = f'{TESTS_DIR}/resources'
@@ -28,3 +29,16 @@ class AsyncIterator:
             return next(self.iter)
         except StopIteration:
             raise StopAsyncIteration
+
+
+class MockedAsyncCall:
+    def __init__(self, results: List[Any], await_time: Optional[float] = None):
+        self._results = results
+        self._iterable = iter(results)
+        self._await_time = await_time if isinstance(await_time, (int, float)) and await_time > 0 else None
+
+    async def call(self, *args, **kwargs) -> Any:
+        if self._await_time:
+            await asyncio.sleep(self._await_time)
+
+        return next(self._iterable, self._results[-1])

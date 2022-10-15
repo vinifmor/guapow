@@ -25,7 +25,7 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         self.assertFalse(config.gpu_cache)
         self.assertEqual(3, config.check_finished_interval)
         self.assertFalse(config.allow_root_scripts)
-        self.assertEqual(30, config.launcher_mapping_timeout)
+        self.assertEqual(60, config.launcher_mapping_timeout)
         self.assertIsNotNone(config.request)
         self.assertTrue(config.request.encrypted)
         self.assertIsNone(config.request.allowed_users)
@@ -97,13 +97,19 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         file_path = f'{RESOURCES_DIR}/opt_compositor.conf'
         config = await self.reader.read_valid(file_path=file_path)
         self.assertIsNotNone(config)
-        self.assertEqual(30, config.launcher_mapping_timeout)
+        self.assertEqual(60, config.launcher_mapping_timeout)
 
     async def test_read_valid__return_instance_with_valid_launcher_mapping_timeout_defined(self):
         file_path = f'{RESOURCES_DIR}/opt_launcher_timeout.conf'
         config = await self.reader.read_valid(file_path=file_path)
         self.assertIsNotNone(config)
         self.assertEqual(0.5, config.launcher_mapping_timeout)
+
+    async def test_read_valid__return_instance_with_valid_launcher_mapping_found_timeout_defined(self):
+        file_path = f'{RESOURCES_DIR}/opt_launcher_found_timeout.conf'
+        config = await self.reader.read_valid(file_path=file_path)
+        self.assertIsNotNone(config)
+        self.assertEqual(0.5, config.launcher_mapping_found_timeout)
 
     async def test_read_valid__return_instance_with_valid_gpu_cache(self):
         file_path = f'{RESOURCES_DIR}/opt_gpu_cache.conf'

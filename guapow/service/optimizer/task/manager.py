@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, List, Awaitable, Type, Dict
+from typing import Optional, List, Awaitable, Type, Dict, Tuple, Iterable
 
 from guapow.service.optimizer.task.environment import EnvironmentTask, DisableWindowCompositor, \
     ChangeCPUFrequencyGovernor, ChangeGPUModeToPerformance, HideMouseCursor, StopProcessesAfterLaunch, \
@@ -9,9 +9,9 @@ from guapow.service.optimizer.task.process import ProcessTask, ReniceProcess, Ch
     ChangeCPUScalingPolicy, ChangeProcessIOClass
 
 
-def run_tasks(tasks: List[Task], process: OptimizedProcess) -> Optional[List[Awaitable]]:
+def run_tasks(tasks: Iterable[Task], process: OptimizedProcess) -> Optional[Tuple[Awaitable, ...]]:
     if tasks:
-        return [t.run(process) for t in tasks]
+        return tuple(t.run(process) for t in tasks)
 
 
 class TasksManager:
@@ -72,7 +72,7 @@ class TasksManager:
             self._log.debug(f"Environment tasks available ({len(self._env_tasks)}): {', '.join([t.__class__.__name__ for t in self._env_tasks])}")
             self._env_tasks.sort(key=self._sort_env)
 
-    async def get_available_process_tasks(self, process: OptimizedProcess) -> Optional[List[ProcessTask]]:
+    async def get_available_process_tasks(self, process: OptimizedProcess) -> Optional[Iterable[ProcessTask]]:
         if self._proc_tasks:
             return await self._list_runnable_tasks(process, self._proc_tasks)
 
@@ -80,14 +80,17 @@ class TasksManager:
         if self._env_tasks:
             return await self._list_runnable_tasks(process, self._env_tasks)
 
-    async def _list_runnable_tasks(self, process: OptimizedProcess, tasks: List[Task]) -> Optional[List[Task]]:
-        to_verify = [t for t in tasks if t.is_allowed_for_self_requests()] if process.request.is_self_request else tasks
+    async def _list_runnable_tasks(self, process: OptimizedProcess, tasks: List[Task]) -> Optional[Tuple[Task, ...]]:
+        if process.request.is_self_request:
+            to_verify = tuple(t for t in tasks if t.is_allowed_for_self_requests())
+        else:
+            to_verify = tasks
 
         if to_verify:
-            async_tasks = [self._should_run(task, process) for task in to_verify]
+            async_tasks = tuple(self._should_run(task, process) for task in to_verify)
 
             if async_tasks:
-                return [t for t in await asyncio.gather(*async_tasks) if t]
+                return tuple(t for t in await asyncio.gather(*async_tasks) if t)
 
     async def _should_run(self, task: Task, process: OptimizedProcess) -> Optional[Task]:
         if await task.should_run(process):

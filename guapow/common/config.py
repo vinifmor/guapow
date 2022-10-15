@@ -75,6 +75,7 @@ class OptimizerConfig(RootFileModel):
                     'scripts.allow_root': ('allow_root_scripts', bool, True),
                     'check.finished.interval': ('check_finished_interval', float, None),
                     'launcher.mapping.timeout': ('launcher_mapping_timeout', float, None),
+                    'launcher.mapping.found_timeout': ('launcher_mapping_found_timeout', float, None),
                     'gpu.cache': ('gpu_cache', bool, True),
                     'gpu.id': ('gpu_ids', Set[int], None),
                     'gpu.vendor': ('gpu_vendor', str, None),
@@ -85,16 +86,17 @@ class OptimizerConfig(RootFileModel):
 
     def __init__(self, port: Optional[int] = None, compositor: Optional[str] = None,
                  allow_root_scripts: Optional[bool] = False,
-                 check_finished_interval: Optional[float] = None, launcher_mapping_timeout: Optional[float] = 30,
-                 gpu_cache: Optional[bool] = False, cpu_performance: Optional[bool] = None,
-                 profile_cache: Optional[bool] = None, pre_cache_profiles: Optional[bool] = None,
-                 gpu_vendor: Optional[str] = None, renicer_interval: Optional[float] = None,
-                 gpu_ids: Optional[Set[int]] = None):
+                 check_finished_interval: Optional[float] = None, launcher_mapping_timeout: Optional[float] = 60,
+                 launcher_mapping_found_timeout: Optional[float] = 10, gpu_cache: Optional[bool] = False,
+                 cpu_performance: Optional[bool] = None, profile_cache: Optional[bool] = None,
+                 pre_cache_profiles: Optional[bool] = None, gpu_vendor: Optional[str] = None,
+                 renicer_interval: Optional[float] = None, gpu_ids: Optional[Set[int]] = None):
         self.port = port
         self.compositor = compositor
         self.allow_root_scripts = allow_root_scripts
         self.check_finished_interval = check_finished_interval
         self.launcher_mapping_timeout = launcher_mapping_timeout
+        self.launcher_mapping_found_timeout = launcher_mapping_found_timeout
         self.gpu_cache = gpu_cache
         self.gpu_vendor = gpu_vendor
         self.gpu_ids = gpu_ids
@@ -121,6 +123,7 @@ class OptimizerConfig(RootFileModel):
                     self.profile_cache is not None,
                     self.has_valid_check_finished_interval(),
                     self.has_valid_launcher_mapping_timeout(),
+                    self.has_valid_launcher_mapping_found_timeout(),
                     self.has_valid_renicer_interval()])
 
     def has_valid_port(self) -> bool:
@@ -128,6 +131,9 @@ class OptimizerConfig(RootFileModel):
 
     def has_valid_launcher_mapping_timeout(self) -> bool:
         return self.launcher_mapping_timeout is not None and self.launcher_mapping_timeout >= 0
+
+    def has_valid_launcher_mapping_found_timeout(self) -> bool:
+        return self.launcher_mapping_found_timeout is not None and self.launcher_mapping_found_timeout >= 0
 
     def has_valid_check_finished_interval(self) -> bool:
         return self.check_finished_interval is not None and self.check_finished_interval >= 0.5
@@ -149,7 +155,10 @@ class OptimizerConfig(RootFileModel):
             self.check_finished_interval = 3
 
         if not self.has_valid_launcher_mapping_timeout():
-            self.launcher_mapping_timeout = 30
+            self.launcher_mapping_timeout = 60
+
+        if not self.has_valid_launcher_mapping_found_timeout():
+            self.launcher_mapping_found_timeout = 10
 
         if self.gpu_cache is None:
             self.gpu_cache = False
@@ -212,7 +221,7 @@ class OptimizerConfig(RootFileModel):
     @classmethod
     def empty(cls) -> "OptimizerConfig":
         instance = cls(allow_root_scripts=None, check_finished_interval=None, launcher_mapping_timeout=None,
-                       gpu_cache=None)
+                       gpu_cache=None, launcher_mapping_found_timeout=None)
         instance.request = None
         return instance
 

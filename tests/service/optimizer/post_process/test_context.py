@@ -10,7 +10,7 @@ class SortedProcessesToRelaunchTest(TestCase):
 
     def setUp(self):
         self.task = SortedProcessesToRelaunchFiller()
-        self.post_summary = PostProcessSummary.empyt()
+        self.post_summary = PostProcessSummary.empty()
         self.context = PostProcessContext.empty()
 
     def test_fill__must_not_add_duplicate_comm_cmds_to_the_context(self):
@@ -49,7 +49,7 @@ class RestorableCPUEnergyPolicyLevelFillerTest(TestCase):
 
     def setUp(self):
         self.context = PostProcessContext.empty()
-        self.summary = PostProcessSummary.empyt()
+        self.summary = PostProcessSummary.empty()
         self.task = RestorableCPUEnergyPolicyLevelFiller()
 
     def test_fill__must_set_restore_cpu_energy_policy_to_true_if_not_keep_and_restore_true(self):

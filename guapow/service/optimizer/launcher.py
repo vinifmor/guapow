@@ -1,18 +1,17 @@
 import asyncio
 import re
-import time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from logging import Logger
-from typing import Dict, Optional, Tuple, List, Generator
+from typing import Dict, Optional, Tuple, Generator, AsyncGenerator, Pattern, Set, List
 
 import aiofiles
 
 from guapow import __app_name__
-from guapow.common import util, system, steam
+from guapow.common import util
 from guapow.common.dto import OptimizationRequest
 from guapow.common.model import CustomEnum
-from guapow.common.steam import get_exe_name
+from guapow.common.system import async_syscall
 from guapow.common.users import is_root_user
 from guapow.service.optimizer.profile import OptimizationProfile
 
@@ -93,13 +92,25 @@ async def map_launchers_file(wrapper_file: str, logger: Logger) -> Optional[Dict
 
 
 class LauncherMapper(ABC):
+    """
+    Responsible for mapping the real processes to be optimized since a source process.
+    """
 
-    def __init__(self, check_time: float, logger: Logger):
+    def __init__(self, check_time: float, found_check_time: float, logger: Logger):
+        """
+        Args:
+            check_time: the maximum amount of time the mapper should be looking for a match (seconds)
+            found_check_time:
+                the maximum amount of time the mapper should be still looking for matches after some already found
+                (seconds)
+            logger:
+        """
         self._log = logger
         self._check_time = check_time
+        self._found_check_time = found_check_time
 
     @abstractmethod
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         pass
 
 
@@ -108,36 +119,79 @@ class ExplicitLauncherMapper(LauncherMapper):
     For mappings declared in the 'launchers' file
     """
 
-    def __init__(self, wait_time: float, logger: Logger):
-        super(ExplicitLauncherMapper, self).__init__(check_time=wait_time, logger=logger)
+    def __init__(self, check_time: float, found_check_time: float, logger: Logger,
+                 iteration_sleep_time: float = 0.1):
+        super(ExplicitLauncherMapper, self).__init__(check_time=check_time,
+                                                     found_check_time=found_check_time,
+                                                     logger=logger)
+        self._iteration_sleep_time = iteration_sleep_time
 
-    async def _find_wrapped_process(self, wrapped_target: Tuple[str, LauncherSearchMode], launcher: str) -> Optional[int]:
-        wrapped_name, search_mode = wrapped_target[0], wrapped_target[1]
+    @staticmethod
+    async def map_process_by_pid(mode: LauncherSearchMode, ignore: Set[int]) -> Optional[Dict[int, str]]:
+        if mode:
+            mode_str = "a" if mode == LauncherSearchMode.COMMAND else "c"
+            exitcode, output = await async_syscall(f'ps -Ao "%p#%{mode_str}" -ww --no-headers')
+
+            if exitcode == 0 and output:
+                pid_comm = dict()
+
+                for line in output.split("\n"):
+                    line_strip = line.strip()
+
+                    if line_strip:
+                        line_split = line_strip.split('#', 1)
+
+                        if len(line_split) > 1:
+                            try:
+                                pid = int(line_split[0])
+                            except ValueError:
+                                continue
+
+                            if pid in ignore:
+                                continue
+
+                            pid_comm[pid] = line_split[1].strip()
+
+                return pid_comm
+
+    async def find_wrapped_process(self, wrapped_target: Tuple[str, LauncherSearchMode], launcher: str,
+                                   source_pid: int) -> AsyncGenerator[int, None]:
+        wrapped_name, search_mode = wrapped_target[0].strip(), wrapped_target[1]
         wrapped_regex = util.map_any_regex(wrapped_name)
-        wrapped_regexes = {wrapped_regex}
-        self._log.debug(f"Looking for mapped process with {search_mode.name.lower()} '{wrapped_name}' (launcher={launcher})")
+        self._log.debug(f"Looking for mapped process with {search_mode.name.lower()} '{wrapped_name}' "
+                        f"(launcher={launcher})")
 
+        latest_found_timeout = None
+        found = set()
         time_init = datetime.now()
-        time_limit = time_init + timedelta(seconds=self._check_time)
+        timeout = time_init + timedelta(seconds=self._check_time)
+        while datetime.now() < timeout:
+            if latest_found_timeout and datetime.now() >= latest_found_timeout:
+                self._log.debug(f"Launcher mapping search timed out earlier (source_pid={source_pid})")
+                return
 
-        while datetime.now() < time_limit:
-            if search_mode == LauncherSearchMode.COMMAND:
-                wrapped_proc = await system.find_process_by_command(wrapped_regexes, last_match=True)
-            else:
-                wrapped_proc = await system.find_process_by_name(wrapped_regex, last_match=True)
+            pid_process = await self.map_process_by_pid(search_mode, ignore=found)
 
-            if wrapped_proc is not None:
-                find_time = (datetime.now() - time_init).total_seconds()
-                pid_found, name_found = wrapped_proc[0], wrapped_proc[1]
-                self._log.info(f"Mapped process '{name_found}' ({pid_found}) found in {find_time:.2f} seconds")
-                return pid_found
-            else:
-                await asyncio.sleep(0.001)
+            if pid_process:
+                for pid, command in pid_process.items():
+                    if wrapped_regex.match(command):
+                        if self._found_check_time >= 0:
+                            latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
 
-        find_time = (datetime.now() - time_init).total_seconds()
-        self._log.warning(f"Could not find process with {search_mode.name.lower()} '{wrapped_name}' (launcher={launcher}). Timed out in {find_time:.2f} seconds")
+                        self._log.info(f"Mapped process '{command}' ({pid}) found")
+                        yield pid
+                        found.add(pid)
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+            if self._iteration_sleep_time > 0:
+                await asyncio.sleep(self._iteration_sleep_time)
+
+        if not found:
+            timeout_secs = (datetime.now() - time_init).total_seconds()
+            self._log.warning(f"Could not find process with {search_mode.name.lower()} '{wrapped_name}' "
+                              f"(launcher={launcher}, source_pid={source_pid}). "
+                              f"Timed out in {timeout_secs:.2f} seconds")
+
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         if profile.launcher and profile.launcher.skip_mapping:
             self._log.info(f"Skipping launcher mapping for {profile.get_log_str()} (pid: {request.pid})")
             return
@@ -169,7 +223,8 @@ class ExplicitLauncherMapper(LauncherMapper):
                             break
 
             if wrapped_target:
-                return await self._find_wrapped_process(wrapped_target, file_name)
+                async for pid in self.find_wrapped_process(wrapped_target, file_name, request.pid):
+                    yield pid
 
         else:
             self._log.debug("No valid launchers mapped found")
@@ -177,81 +232,226 @@ class ExplicitLauncherMapper(LauncherMapper):
 
 class SteamLauncherMapper(LauncherMapper):
 
-    def __init__(self, wait_time: float, logger: Logger):
-        super(SteamLauncherMapper, self).__init__(check_time=wait_time, logger=logger)
+    def __init__(self, check_time: float, found_check_time: float, logger: Logger,
+                 iteration_sleep_time: float = 0.1):
+        super(SteamLauncherMapper, self).__init__(check_time=check_time,
+                                                  found_check_time=found_check_time,
+                                                  logger=logger)
+        self._re_steam_cmd: Optional[Pattern] = None
+        self._to_ignore: Optional[Set[str]] = None  # processes that should not be optimized
+        self._re_proton_command: Optional[Pattern] = None
+        self._iteration_sleep_time = iteration_sleep_time  # used to avoid CPU overloading while looking for targets
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    @property
+    def re_steam_cmd(self) -> Pattern:
+        if not self._re_steam_cmd:
+            self._re_steam_cmd = re.compile(r'^.+/(\w+)\s+SteamLaunch\s+.+', re.IGNORECASE)
+
+        return self._re_steam_cmd
+
+    @property
+    def re_proton_command(self) -> Pattern:
+        if not self._re_proton_command:
+            self._re_proton_command = re.compile(r'^.+/proton\s+waitforexitandrun\s+.+$', re.IGNORECASE)
+
+        return self._re_proton_command
+
+    @property
+    def to_ignore(self) -> Set[str]:
+        if self._to_ignore is None:
+            self._to_ignore = {"wineserver", "services.exe", "winedevice.exe", "plugplay.exe", "svchost.exe",
+                               "explorer.exe", "rpcss.exe", "tabtip.exe", "wine", "wine64", "wineboot.exe",
+                               "cmd.exe", "conhost.exe", "start.exe", "steam-runtime-l", "proton", "gzip",
+                               "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
+                               "OriginClientSer", "QtWebEngineProc", "EASteamProxy.ex", "ActivationUI.ex",
+                               "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe",
+                               "ldconfig", "UPlayBrowser.exe", "whql:off", "PnkBstrA.exe"}
+
+        return self._to_ignore
+
+    async def map_processes_by_parent(self) -> Dict[int, Set[Tuple[int, str]]]:
+        exitcode, output = await async_syscall(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+
+        if exitcode == 0 and output:
+            proc_tree = dict()
+
+            for line in output.split("\n"):
+                line_strip = line.strip()
+
+                if line_strip:
+                    line_split = line_strip.split('#', 2)
+
+                    if len(line_split) > 2:
+                        ppid, pid, comm, = (e.strip() for e in line_split)
+                        try:
+                            ppid, pid = int(ppid), int(pid)
+                        except ValueError:
+                            continue
+
+                        children = proc_tree.get(ppid)
+
+                        if not children:
+                            children = set()
+                            proc_tree[ppid] = children
+
+                        children.add((pid, comm))
+
+            return proc_tree
+
+    def find_target_in_hierarchy(self, reverse_hierarchy: List[str], root_element_pid: int,
+                                 processes_by_parent: Optional[Dict[int, Set[Tuple[int, str]]]] = None,
+                                 pid_by_comm: Optional[Dict[str, int]] = None) -> Optional[int]:
+
+        if len(reverse_hierarchy) == 1:
+            return root_element_pid
+
+        comm_pid = dict() if pid_by_comm is None else pid_by_comm
+
+        if reverse_hierarchy[-1] not in comm_pid:
+            comm_pid[reverse_hierarchy[-1]] = root_element_pid
+
+        for idx, comm in enumerate(reverse_hierarchy):
+            pid = comm_pid.get(comm)
+
+            if pid is None:
+                parent_id = comm_pid.get(reverse_hierarchy[idx + 1])
+
+                if not parent_id:
+                    continue  # the iteration must continue if the parent id is not mapped yet
+
+                parent_children = processes_by_parent.get(parent_id)
+
+                if not parent_children:
+                    return   # if the parent has no children, it will not be possible to find the current comm's pid
+
+                try:
+                    pid = next(pid_ for pid_, comm_ in sorted(parent_children, reverse=True) if comm_ == comm)
+                except StopIteration:
+                    return  # the current comm could not be found, so stop the iteration
+
+                comm_pid[comm] = pid
+
+            if idx == 0:  # if current element is the target, return it immediately
+                return pid
+
+            # restart the find
+            return self.find_target_in_hierarchy(reverse_hierarchy=reverse_hierarchy,
+                                                 root_element_pid=root_element_pid,
+                                                 processes_by_parent=processes_by_parent,
+                                                 pid_by_comm=comm_pid)
+
+    def map_expected_hierarchy(self, request: OptimizationRequest, root_comm: Optional[str] = None) -> List[str]:
+        hierarchy = list()
+
+        if "/steamapps/common/SteamLinux" in request.command:
+            self._log.debug(f"Steam command comes from container (pid: {request.pid})")
+            hierarchy.append("pressure-vessel")
+            hierarchy.append("pv-bwrap")
+        elif self.re_proton_command.match(request.command):
+            hierarchy.append("python3")
+
+        if root_comm:
+            hierarchy.append(root_comm)
+
+        return hierarchy
+
+    def extract_root_process_name(self, command: str) -> str:
+        root_cmd = self.re_steam_cmd.findall(command)
+
+        if root_cmd:
+            return root_cmd[0]
+
+    def find_children(self, ppid: int, processes_by_parent: Dict[int, Set[Tuple[int, str]]],
+                      to_ignore: Optional[Set[str]] = None, already_found: Optional[Set[int]] = None) \
+            -> Generator[int, None, None]:
+
+        found = already_found if already_found is not None else set()
+
+        children = processes_by_parent.get(ppid)
+
+        if children:
+            for pid, comm in children:
+                if (not to_ignore or comm not in to_ignore) and "<defunct>" not in comm:
+                    if pid not in found:
+                        self._log.info(f"Steam child process found: {comm} (pid={pid}, ppid={ppid})")
+                        yield pid
+                        found.add(pid)
+
+                    for pid_ in self.find_children(ppid=pid, processes_by_parent=processes_by_parent,
+                                                   to_ignore=to_ignore, already_found=found):
+                        yield pid_
+
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         if profile.steam:
-            steam_cmd = steam.get_steam_runtime_command(request.command)
+            steam_root_comm = self.extract_root_process_name(request.command)
 
-            if not steam_cmd:
+            if not steam_root_comm:
                 self._log.warning(f'Command not from Steam: {request.command} (pid: {request.pid})')
-                return
-
-            self._log.debug(f'Steam command detected (pid: {request.pid}): {request.command}')
-
-            proton_name_and_paths = steam.get_proton_exec_name_and_paths(steam_cmd)
-
-            if proton_name_and_paths:
-                cmd_patterns = {re.compile(r'^{}$'.format(re.escape(cmd))) for cmd in proton_name_and_paths[1:]}
             else:
-                cmd_patterns = {re.compile(r'(/bin/\w+\s+)?{}'.format(re.escape(steam_cmd)))}  # native games
+                self._log.debug(f'Steam command detected for request (pid: {request.pid})')
+                expected_hierarchy = self.map_expected_hierarchy(request, steam_root_comm)
+                timeout = datetime.now() + timedelta(seconds=self._check_time)
 
-            cmd_logs = ', '.join(p.pattern for p in cmd_patterns)
-            self._log.debug(f'Looking for a Steam process matching one of the command patterns (pid: {request.pid}): {cmd_logs}')
+                latest_found_timeout = None  # timeout for every time a target is found (to stop faster)
+                pid_by_comm = dict()  # to save which processes were previously mapped
+                already_found: Set[int] = set()  # processes already yielded
+                target_ppid = None  # parent with the target children
 
-            time_init = datetime.now()
-            time_limit = time_init + timedelta(seconds=self._check_time)
-            while datetime.now() < time_limit:
-                proc_found = await system.find_process_by_command(cmd_patterns, last_match=True)
-                find_time = (datetime.now() - time_init).total_seconds()
+                to_ignore = {*expected_hierarchy, *self.to_ignore}  # target children to ignore
 
-                if proc_found is not None:
-                    self._log.info(f"Steam process '{proc_found[1]}' ({proc_found[0]}) found in {find_time:.2f} seconds")
-                    return proc_found[0]
-                else:
-                    await asyncio.sleep(0.001)
+                while datetime.now() < timeout:
+                    if latest_found_timeout and datetime.now() >= latest_found_timeout:
+                        self._log.debug(f"Steam subprocesses search timed out earlier (source_pid={request.pid})")
+                        return
 
-            find_time = (datetime.now() - time_init).total_seconds()
-            self._log.warning(f'Could not find a Steam process matching command patterns (pid: {request.pid}). Search timed out in {find_time:.2f} seconds')
+                    parent_procs = await self.map_processes_by_parent()
 
-            if proton_name_and_paths:
-                proc_name = proton_name_and_paths[0]
-            else:
-                proc_name = get_exe_name(steam_cmd)
+                    if target_ppid is None:
+                        target_ppid = self.find_target_in_hierarchy(reverse_hierarchy=expected_hierarchy,
+                                                                    root_element_pid=request.pid,
+                                                                    processes_by_parent=parent_procs,
+                                                                    pid_by_comm=pid_by_comm)
+                        if target_ppid is not None:
+                            self._log.debug(f"Target Steam process parent found (pid={target_ppid}, "
+                                            f"comm={expected_hierarchy[0]}) (source_pid={request.pid})")
 
-            if not proc_name:
-                self._log.warning(f'Name of launched Steam command could not be determined (request={request.pid}). No extra search will be performed.')
-            else:
-                self._log.debug(f"Trying to find Steam process by name '{proc_name}' (request: {request.pid})")
-                ti = time.time()
-                proc_found = await system.find_process_by_name(re.compile(r'^{}$'.format(proc_name)), last_match=True)
-                tf = time.time()
+                    if target_ppid is not None:
+                        for pid in self.find_children(ppid=target_ppid, processes_by_parent=parent_procs,
+                                                      already_found=already_found, to_ignore=to_ignore):
+                            if self._found_check_time >= 0:
+                                latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
 
-                if proc_found:
-                    self._log.info(f"Steam process named '{proc_found[0]}' ({proc_found[1]}) found in {tf - ti:.2f} seconds")
-                    return proc_found[0]
-                else:
-                    self._log.warning(f'Could not find a Steam process named {proc_name} (request={request.pid})')
+                            yield pid
+
+                    if self._iteration_sleep_time > 0:
+                        await asyncio.sleep(self._iteration_sleep_time)
+
+                self._log.debug(f"Steam subprocesses search timed out (source_pid={request.pid})")
 
 
 class LauncherMapperManager(LauncherMapper):
-
-    def __init__(self, check_time: float, logger: Logger, mappers: Optional[List[LauncherMapper]] = None):
-        super(LauncherMapperManager, self).__init__(check_time, logger)
+    def __init__(self, check_time: float, found_check_time: float,
+                 logger: Logger, mappers: Optional[Tuple[LauncherMapper, ...]] = None):
+        super(LauncherMapperManager, self).__init__(check_time, found_check_time, logger)
 
         if mappers:
             self._sub_mappers = mappers
         else:
-            self._sub_mappers = [cls(check_time, logger) for cls in LauncherMapper.__subclasses__() if cls != self.__class__]
+            sub_classes = LauncherMapper.__subclasses__()
+            self._sub_mappers = tuple(cls(check_time, found_check_time, logger) for cls in sub_classes
+                                      if cls != self.__class__)
 
-    async def map_pid(self, request: OptimizationRequest, profile: OptimizationProfile) -> Optional[int]:
+    async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
+        any_mapper_yield = False
         for mapper in self._sub_mappers:
-            real_id = await mapper.map_pid(request, profile)
+            if any_mapper_yield:  # if any mapper already returned something, stop the iteration
+                return
 
-            if real_id:
-                return real_id
+            async for real_id in mapper.map_pids(request, profile):
+                if real_id is not None:
+                    any_mapper_yield = True
+                    yield real_id
 
-    def get_sub_mappers(self) -> Optional[List[LauncherMapper]]:
+    def get_sub_mappers(self) -> Optional[Tuple[LauncherMapper]]:
         if self._sub_mappers is not None:
-            return [*self._sub_mappers]
+            return tuple(self._sub_mappers)

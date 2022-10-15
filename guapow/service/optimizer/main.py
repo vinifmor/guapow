@@ -54,6 +54,7 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     logger.info(f"Nice levels monitoring interval: {opt_config.renicer_interval} seconds")
     logger.info(f'Finished process checking interval: {opt_config.check_finished_interval} seconds')
     logger.info(f'Launcher mapping timeout: {opt_config.launcher_mapping_timeout} seconds')
+    logger.info(f'Launcher mapping found timeout: {opt_config.launcher_mapping_found_timeout} seconds')
 
     if opt_config.allow_root_scripts:
         logger.warning("Scripts are allowed to run at root level")
@@ -93,8 +94,9 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     context = OptimizationContext(cpufreq_man=cpufreq_man, gpu_man=gpu_man, logger=logger, cpu_count=cpu_count,
                                   compositor=compositor, allow_root_scripts=bool(opt_config.allow_root_scripts),
                                   launcher_mapping_timeout=opt_config.launcher_mapping_timeout,
+                                  launcher_mapping_found_timeout=opt_config.launcher_mapping_found_timeout,
                                   mouse_man=MouseCursorManager(logger), renicer_interval=opt_config.renicer_interval,
-                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue.empty(),
+                                  cpuenergy_man=cpu_energy_man, queue=OptimizationQueue(set(), logger),
                                   system_service=opt_config.is_service(),
                                   gpu_ids={str(i) for i in opt_config.gpu_ids} if opt_config.gpu_ids else None)
 

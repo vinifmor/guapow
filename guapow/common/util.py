@@ -19,7 +19,7 @@ def has_any_regex(word: str) -> bool:
 
 def map_only_any_regex(word: str) -> Optional[Pattern]:
     escaped_word = re.escape(re_any_operator.sub('@', word))
-    return re.compile(r'^{}$'.format(escaped_word.replace('@', '.+')))
+    return re.compile(r'^{}$'.format(escaped_word.replace('@', '.*')))
 
 
 def strip_file_extension(cmd: str) -> Optional[str]:
