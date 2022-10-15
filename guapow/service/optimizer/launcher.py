@@ -175,12 +175,10 @@ class ExplicitLauncherMapper(LauncherMapper):
             if pid_process:
                 for pid, command in pid_process.items():
                     if wrapped_regex.match(command):
-                        find_time = (datetime.now() - time_init).total_seconds()
-
                         if self._found_check_time >= 0:
                             latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
 
-                        self._log.info(f"Mapped process '{command}' ({pid}) found in {find_time:.2f} seconds")
+                        self._log.info(f"Mapped process '{command}' ({pid}) found")
                         yield pid
                         found.add(pid)
 
