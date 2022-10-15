@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [1.3.0]
+## [1.3.0] 2022-09-15
 ### Improvements
 - Properly detecting all Steam games subprocesses that need to be optimized (no need to map launchers anymore)
 - Launcher mapping now optimizes all matches instead of just the last born process
