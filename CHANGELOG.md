@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## NEXT
+### Fixes
+- Only checking for mapped processes when a process optimization is requested
+
 ## [1.3.0] 2022-09-15
 ### Improvements
 - Properly detecting all Steam games subprocesses that need to be optimized (no need to map launchers anymore)

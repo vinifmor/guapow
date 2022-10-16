@@ -311,10 +311,9 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         self.assertNotIn(self.request.pid, self.context.queue.get_view())
 
     @patch('os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.service.optimizer.handler.run_tasks', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
     async def test_handle__must_remove_the_request_pid_after_the_optimizations(self, *mocks: Mock):
-        time_mock, run_tasks, os_path_exists = mocks[0], mocks[1], mocks[2]
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=None)
@@ -350,7 +349,8 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         exp_mapped_proc = exp_source_proc.clone()
         exp_mapped_proc.pid = 4788
 
-        run_tasks.assert_called_once_with((proc_task,), exp_mapped_proc)
+        # run_tasks.assert_called_once_with((proc_task,), exp_mapped_proc)
+        proc_task.run.assert_awaited_once_with(exp_mapped_proc)
         time_mock.assert_called()
 
         watcher_man.watch.assert_not_called()
@@ -359,10 +359,9 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         self.assertNotIn(4788, self.context.queue.get_view())
 
     @patch('os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.service.optimizer.handler.run_tasks', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
-    async def test_handle__must_remove_the_source_pid_and_keep_the_mapped_pid_on_the_processing_queue_when_watched(self,*mocks: Mock):
-        time_mock, run_tasks, os_path_exists = mocks[0], mocks[1], mocks[2]
+    async def test_handle__must_remove_the_source_pid_and_keep_the_mapped_on_the_queue_when_watched(self, *mocks: Mock):
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=None)
@@ -397,7 +396,7 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         exp_mapped_proc = exp_source_proc.clone()
         exp_mapped_proc.pid = 4788
 
-        run_tasks.assert_called_once_with([proc_task], exp_mapped_proc)
+        proc_task.run.assert_awaited_once_with(exp_mapped_proc)
         time_mock.assert_called()
 
         watcher_man.watch.assert_awaited_once_with(exp_mapped_proc)
@@ -512,8 +511,8 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
 
     @patch('os.path.exists', return_value=True)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
-    async def test_handle__must_execute_env_tasks_for_every_mapped_processes(self, *mocks: Mock):
-        time_mock, os_path_exists = mocks[0], mocks[1]
+    async def test_handle__must_run_env_tasks_for_every_mapped_process_when_no_proc_task_available(self, *mocks: Mock):
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
 
@@ -523,8 +522,7 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         env_task = AsyncMock(side_effect=mock_cpu_change)
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
 
-        proc_task = AsyncMock()
-        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[])
 
         watcher_man = MagicMock()
         watcher_man.watch = AsyncMock()
@@ -561,7 +559,6 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
 
         time_mock.assert_called()
         env_task.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
-        proc_task.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
         watcher_man.watch.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
 
         for clone in (exp_cloned_proc_1, exp_cloned_proc_2):

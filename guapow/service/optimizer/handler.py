@@ -12,6 +12,7 @@ from guapow.service.optimizer.profile import OptimizationProfile, OptimizationPr
 from guapow.service.optimizer.task.environment import EnvironmentTask
 from guapow.service.optimizer.task.manager import TasksManager, run_tasks
 from guapow.service.optimizer.task.model import OptimizationContext, OptimizedProcess
+from guapow.service.optimizer.task.process import ProcessTask
 from guapow.service.optimizer.watch import DeadProcessWatcherManager
 
 
@@ -66,28 +67,7 @@ class OptimizationHandler:
 
         self._log.warning("No optimization settings defined in configuration: {}".format(config.replace('\n', ' ')))
 
-    async def _generate_process_tasks(self, source_process: OptimizedProcess) -> \
-            AsyncGenerator[Tuple[OptimizedProcess, Iterable[Awaitable]], None]:
-        """
-        Generates tasks related to the source process or mapped processes.
-        """
-        if source_process.profile.process:
-            proc_tasks = await self._tasks_man.get_available_process_tasks(source_process)
-
-            if proc_tasks:
-                any_mapped = False
-                async for pid in self._launcher_mapper.map_pids(source_process.request, source_process.profile):
-                    if pid is not None and pid != source_process.pid:
-                        await self._queue.add_pid(pid)
-                        any_mapped = True
-                        cloned_process = source_process.clone()
-                        cloned_process.pid = pid
-                        yield cloned_process, run_tasks(proc_tasks, cloned_process)
-
-                if not any_mapped:
-                    yield source_process, run_tasks(proc_tasks, source_process)
-
-    async def _handle_process(self, process: OptimizedProcess, tasks: Optional[Iterable[Awaitable]] = None,
+    async def _handle_process(self, process: OptimizedProcess, proc_tasks: Optional[Iterable[Task]] = None,
                               env_tasks: Optional[Iterable[Task]] = None):
         if env_tasks:
             self._log.debug(f"Awaiting environment tasks required by process '{process.pid}'")
@@ -102,9 +82,9 @@ class OptimizationHandler:
             if process.pid != process.source_pid:
                 await self._queue.remove_pids(process.source_pid)
 
-        if tasks:
+        if proc_tasks:
             self._log.debug(f"Awaiting process tasks required by the process '{process.pid}'")
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*run_tasks(proc_tasks, process))
 
         if not should_be_watched:
             self._log.debug(f"Process '{process.pid}' does not require watching")
@@ -118,7 +98,7 @@ class OptimizationHandler:
         request = process.request
         exec_time = time.time() - request.created_at
         self._log.debug(f"Optimization request for process '{process.pid}' took {exec_time:.4f} seconds"
-                        f"{f' (source pid={process.pid})' if request.pid != process.pid else ''}")
+                        f"{f' (source_pid={process.pid})' if request.pid != process.pid else ''}")
 
     async def handle(self, request: OptimizationRequest):
         request.prepare()
@@ -138,16 +118,22 @@ class OptimizationHandler:
             source_process = OptimizedProcess(request=request, created_at=time.time(), profile=profile)
 
             env_tasks: Optional[List[EnvironmentTask]] = None
+            proc_tasks: Optional[List[ProcessTask]] = None
+            mapped_processes = False  # if other processes were optimized in the place of the source process
+
             if profile:
                 env_tasks = await self._tasks_man.get_available_environment_tasks(source_process)
 
-                pids_handled = False
-                async for mapped_proc, proc_tasks in self._generate_process_tasks(source_process):
-                    await self._handle_process(mapped_proc, proc_tasks, env_tasks)
-                    pids_handled = True
+                if source_process.profile.process:
+                    proc_tasks = await self._tasks_man.get_available_process_tasks(source_process)
 
-                if pids_handled:
-                    return
+                async for pid in self._launcher_mapper.map_pids(source_process.request, source_process.profile):
+                    if pid is not None and pid != source_process.pid:
+                        await self._queue.add_pid(pid)
+                        mapped_processes = True
+                        mapped_process = source_process.clone()
+                        mapped_process.pid = pid
+                        await self._handle_process(mapped_process, proc_tasks, env_tasks)
 
-            # only tries to handle the source process in case it wasn't mapped as other processes
-            await self._handle_process(source_process, env_tasks=env_tasks)
+            if not mapped_processes:
+                await self._handle_process(source_process, proc_tasks, env_tasks)
