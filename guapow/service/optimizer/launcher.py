@@ -265,7 +265,9 @@ class SteamLauncherMapper(LauncherMapper):
                                "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
                                "OriginClientSer", "QtWebEngineProc", "EASteamProxy.ex", "ActivationUI.ex",
                                "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe",
-                               "ldconfig", "UPlayBrowser.exe", "whql:off", "PnkBstrA.exe"}
+                               "ldconfig", "UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe", "UplayService.ex",
+                               "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain", "CrUtilityMain",
+                               "whql:off", "PnkBstrA.exe"}
 
         return self._to_ignore
 

@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - New optimizer service properties:
   - `optimize_children.timeout`: maximum period in *seconds* to keep looking for the target process children (default: `30`). `0` can be defined if children should be ignored.
   - `optimize_children.found_timeout`: maximum period in *seconds* to still keep looking for the target process children after a child in found (default: `10`). `0` can be defined if the search process should be interrupted immediately after a child is found.
+- Ignoring some Ubisoft launcher sub-processes not required to be optimized (when launched from Steam)
 
 ### Fixes
 - Only checking for mapped processes when a process optimization is requested

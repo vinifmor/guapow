@@ -896,6 +896,11 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         expected_processes = {"whql:off"}
         self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
 
+    def test_to_ignore__must_contain_ubisoft_launcher_processes(self):
+        expected_processes = {"UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe", "UplayService.ex",
+                              "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain", "CrUtilityMain"}
+        self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
+
 
 class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):
 
