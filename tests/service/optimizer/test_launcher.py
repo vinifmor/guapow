@@ -407,7 +407,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.mapper = SteamLauncherMapper(check_time=0.0001, found_check_time=0.0001, iteration_sleep_time=0,
                                           logger=Mock())
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
             1403#    2601# reaper
             2601#    2602# ABC.x86_
             2601#    2603# ABC.x86_-thread
@@ -428,7 +428,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({2602, 2603}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
        1403#    11573# reaper
        11573#   11574# pv-bwrap
        11574#   11728# pressure-vessel
@@ -454,7 +454,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({13786, 13787}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    5615# python3
         5615#    5661# Game_x64.exe
@@ -476,7 +476,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661, 5662}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
+    @patch(f"{__app_name__}.common.system.async_syscall")
     async def test_map_pids__yield_several_ids_when_proton_command_from_runtime(self, async_syscall: AsyncMock):
         mocked_call = MockedAsyncCall(results=[(0, """12# 123#  reaper
                                                       123# 456#  pv-bwrap
@@ -512,7 +512,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 2)
         self.assertEqual({1213, 1214}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    30324# pv-bwrap
         30324#   30408# pressure-vessel
@@ -556,7 +556,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    30324# pv-bwrap
         30324#   30408# pressure-vessel
@@ -584,7 +584,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    30324# pv-bwrap
         30324#   30408# pressure-vessel
@@ -609,7 +609,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    30324# pv-bwrap
         30324#   30408# pressure-vessel
@@ -636,7 +636,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         1435#    5614# reaper
         5614#    30324# pv-bwrap
         30324#   30408# pressure-vessel
@@ -663,7 +663,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         12# 123#  reaper
         123# 456#  pv-bwrap
         456# 789#  pressure-vessel
@@ -689,7 +689,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({1213, 1214}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
         12# 123#  reaper
         123# 456#  pv-bwrap
         456# 789#  pressure-vessel
@@ -713,7 +713,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual(set(), mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
+    @patch(f"{__app_name__}.common.system.async_syscall")
     async def test_map_pids__it_should_stopping_yielding_if_found_check_time_reached(self, *mocks: AsyncMock):
         async_syscall = mocks[0]
 
@@ -738,13 +738,13 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         self.assertEqual(1, async_syscall.await_count)
         self.assertEqual({2602}, mapped_pids)
 
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall", return_value=(0, """
+    @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
             1403#    2601# reaper
             2601#    2602# ABC.x86_
             2602#    2603# ABC.x86_-thread
             2603#    2604# ABC.x86_-thread-2
     """))
-    async def test_map_pids__it_should_yield_children_of_target_children(self, async_syscall: AsyncMock):
+    async def test_map_pids__it_should_not_yield_children_of_target_children(self, async_syscall: AsyncMock):
         cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=999999 -- " \
               "/home/user/.local/share/Steam/ubuntu12_32/steam-launch-wrapper -- " \
               "/media/hd0/Steam/steamapps/common/Game/ABC.x86_"
@@ -758,7 +758,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         mapped_pids = await map_pids()
         async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
         self.assertGreaterEqual(async_syscall.await_count, 1)
-        self.assertEqual({2602, 2603, 2604}, mapped_pids)
+        self.assertEqual({2602}, mapped_pids)
 
     def test_map_expected_hierarchy__when_proton_command(self):
         cmd = "/home/user/.local/share/Steam/ubuntu12_32/reaper SteamLaunch AppId=443860 -- " \
@@ -811,28 +811,6 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
 
         root_cmd = self.mapper.extract_root_process_name(cmd)
         self.assertEqual("reaper", root_cmd)
-
-    @patch(f"{__app_name__}.service.optimizer.launcher.async_syscall")
-    async def test_map_processes_by_parent(self, async_syscall: AsyncMock):
-        async_syscall.return_value = (0, """
-        1411#    5202# reaper
-        5202#    5203# pv-bwrap
-        5203#    5286# pressure-vessel
-        5286#    7925# python3
-        5286#    8017# wineserver
-        5286#    8708# Game.exe
-        5286#    8747# Game-Win64-Shi
-        """)
-
-        proc_map = await self.mapper.map_processes_by_parent()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
-        self.assertEqual(4, len(proc_map))
-
-        expected = {1411: {(5202, "reaper")},
-                    5202: {(5203, "pv-bwrap")},
-                    5203: {(5286, "pressure-vessel")},
-                    5286: {(7925, "python3"), (8017, "wineserver"), (8708, "Game.exe"), (8747, "Game-Win64-Shi")}}
-        self.assertEqual(expected, proc_map)
 
     def test_find_target_in_hierarchy__return_the_root_id_when_just_one_element_hierarchy(self):
         hierarchy = ["reaper"]
@@ -917,19 +895,6 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
     def test_to_ignore__must_contain_unknown_unneeded_processes(self):
         expected_processes = {"whql:off"}
         self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
-
-    def test_find_children__it_should_find_children_of_already_found_processes(self):
-        parent_procs = {
-            123: {(456, "reaper")},
-            456: {(789, "pv-bwrap")},
-            789: {(1011, "abc"), (1012, "def")}
-        }
-
-        already_found = {789}
-        new_found = {p for p in self.mapper.find_children(ppid=456,
-                                                          processes_by_parent=parent_procs,
-                                                          already_found=already_found)}
-        self.assertEqual({1011, 1012}, new_found)
 
 
 class ProcessLauncherManagerTest(IsolatedAsyncioTestCase):

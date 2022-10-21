@@ -56,6 +56,13 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     logger.info(f'Launcher mapping timeout: {opt_config.launcher_mapping_timeout} seconds')
     logger.info(f'Launcher mapping found timeout: {opt_config.launcher_mapping_found_timeout} seconds')
 
+    logger.info(f'Children optimization timeout: {opt_config.optimize_children_timeout} seconds')
+
+    if opt_config.optimize_children_timeout <= 0:
+        logger.warning("Target processes children will not be optimized")
+
+    logger.info(f'Children optimization timeout (after found): {opt_config.optimize_children_found_timeout} seconds')
+
     if opt_config.allow_root_scripts:
         logger.warning("Scripts are allowed to run at root level")
 
@@ -98,7 +105,9 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
                                   mouse_man=MouseCursorManager(logger), renicer_interval=opt_config.renicer_interval,
                                   cpuenergy_man=cpu_energy_man, queue=OptimizationQueue(set(), logger),
                                   system_service=opt_config.is_service(),
-                                  gpu_ids={str(i) for i in opt_config.gpu_ids} if opt_config.gpu_ids else None)
+                                  gpu_ids={str(i) for i in opt_config.gpu_ids} if opt_config.gpu_ids else None,
+                                  search_children_timeout=opt_config.optimize_children_timeout,
+                                  search_children_found_timeout=opt_config.optimize_children_found_timeout)
 
     watcher_man = DeadProcessWatcherManager(context=context, restore_man=PostProcessTaskManager(context),
                                             check_interval=opt_config.check_finished_interval)

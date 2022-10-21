@@ -11,7 +11,7 @@ from guapow import __app_name__
 from guapow.common import util
 from guapow.common.dto import OptimizationRequest
 from guapow.common.model import CustomEnum
-from guapow.common.system import async_syscall
+from guapow.common.system import async_syscall, map_processes_by_parent, find_process_children
 from guapow.common.users import is_root_user
 from guapow.service.optimizer.profile import OptimizationProfile
 
@@ -269,35 +269,6 @@ class SteamLauncherMapper(LauncherMapper):
 
         return self._to_ignore
 
-    async def map_processes_by_parent(self) -> Dict[int, Set[Tuple[int, str]]]:
-        exitcode, output = await async_syscall(f'ps -Ao "%P#%p#%c" -ww --no-headers')
-
-        if exitcode == 0 and output:
-            proc_tree = dict()
-
-            for line in output.split("\n"):
-                line_strip = line.strip()
-
-                if line_strip:
-                    line_split = line_strip.split('#', 2)
-
-                    if len(line_split) > 2:
-                        ppid, pid, comm, = (e.strip() for e in line_split)
-                        try:
-                            ppid, pid = int(ppid), int(pid)
-                        except ValueError:
-                            continue
-
-                        children = proc_tree.get(ppid)
-
-                        if not children:
-                            children = set()
-                            proc_tree[ppid] = children
-
-                        children.add((pid, comm))
-
-            return proc_tree
-
     def find_target_in_hierarchy(self, reverse_hierarchy: List[str], root_element_pid: int,
                                  processes_by_parent: Optional[Dict[int, Set[Tuple[int, str]]]] = None,
                                  pid_by_comm: Optional[Dict[str, int]] = None) -> Optional[int]:
@@ -361,26 +332,6 @@ class SteamLauncherMapper(LauncherMapper):
         if root_cmd:
             return root_cmd[0]
 
-    def find_children(self, ppid: int, processes_by_parent: Dict[int, Set[Tuple[int, str]]],
-                      to_ignore: Optional[Set[str]] = None, already_found: Optional[Set[int]] = None) \
-            -> Generator[int, None, None]:
-
-        found = already_found if already_found is not None else set()
-
-        children = processes_by_parent.get(ppid)
-
-        if children:
-            for pid, comm in children:
-                if (not to_ignore or comm not in to_ignore) and "<defunct>" not in comm:
-                    if pid not in found:
-                        self._log.info(f"Steam child process found: {comm} (pid={pid}, ppid={ppid})")
-                        yield pid
-                        found.add(pid)
-
-                    for pid_ in self.find_children(ppid=pid, processes_by_parent=processes_by_parent,
-                                                   to_ignore=to_ignore, already_found=found):
-                        yield pid_
-
     async def map_pids(self, request: OptimizationRequest, profile: OptimizationProfile) -> AsyncGenerator[int, None]:
         if profile.steam:
             steam_root_comm = self.extract_root_process_name(request.command)
@@ -404,7 +355,7 @@ class SteamLauncherMapper(LauncherMapper):
                         self._log.debug(f"Steam subprocesses search timed out earlier (source_pid={request.pid})")
                         return
 
-                    parent_procs = await self.map_processes_by_parent()
+                    parent_procs = await map_processes_by_parent()
 
                     if target_ppid is None:
                         target_ppid = self.find_target_in_hierarchy(reverse_hierarchy=expected_hierarchy,
@@ -416,12 +367,16 @@ class SteamLauncherMapper(LauncherMapper):
                                             f"comm={expected_hierarchy[0]}) (source_pid={request.pid})")
 
                     if target_ppid is not None:
-                        for pid in self.find_children(ppid=target_ppid, processes_by_parent=parent_procs,
-                                                      already_found=already_found, to_ignore=to_ignore):
+                        for pid_, comm_, ppid_ in find_process_children(ppid=target_ppid,
+                                                                        processes_by_parent=parent_procs,
+                                                                        already_found=already_found,
+                                                                        comm_to_ignore=to_ignore,
+                                                                        recursive=False):
                             if self._found_check_time >= 0:
                                 latest_found_timeout = datetime.now() + timedelta(seconds=self._found_check_time)
 
-                            yield pid
+                            self._log.info(f"Steam child process found: {comm_} (pid={pid_}, ppid={ppid_})")
+                            yield pid_
 
                     if self._iteration_sleep_time > 0:
                         await asyncio.sleep(self._iteration_sleep_time)

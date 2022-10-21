@@ -1,11 +1,13 @@
 import re
 import subprocess
+from unittest import TestCase
 from unittest.async_case import IsolatedAsyncioTestCase
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
 
 from guapow import __app_name__
 from guapow.common import system
-from guapow.common.system import find_pids_by_names, find_commands_by_pids, find_processes_by_command
+from guapow.common.system import find_pids_by_names, find_commands_by_pids, find_processes_by_command, \
+    find_process_children, map_processes_by_parent
 from tests import AsyncIterator
 
 
@@ -187,3 +189,71 @@ class FindProcessesByCommandTest(IsolatedAsyncioTestCase):
         res = await find_processes_by_command({'/bin/a', '/bin/b', '/bin/d'}, last_match=True)
         self.assertEqual({'/bin/a': 3, '/bin/b': 5, '/bin/d': 6}, res)
         create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p#%a" -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+
+
+class MapProcessByParentTest(IsolatedAsyncioTestCase):
+
+    @patch(f"{__app_name__}.common.system.async_syscall")
+    async def test_map_processes_by_parent(self, async_syscall: AsyncMock):
+        async_syscall.return_value = (0, """
+        1411#    5202# reaper
+        5202#    5203# pv-bwrap
+        5203#    5286# pressure-vessel
+        5286#    7925# python3
+        5286#    8017# wineserver
+        5286#    8708# Game.exe
+        5286#    8747# Game-Win64-Shi
+        """)
+
+        proc_map = await map_processes_by_parent()
+        async_syscall.assert_awaited_with(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+        self.assertEqual(4, len(proc_map))
+
+        expected = {1411: {(5202, "reaper")},
+                    5202: {(5203, "pv-bwrap")},
+                    5203: {(5286, "pressure-vessel")},
+                    5286: {(7925, "python3"), (8017, "wineserver"), (8708, "Game.exe"), (8747, "Game-Win64-Shi")}}
+        self.assertEqual(expected, proc_map)
+
+
+class FindProcessChildrenTest(TestCase):
+
+    def test_it_should_find_children_recursively_by_default(self):
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "abc"), (1012, "def")}
+        }
+
+        new_found = {data for data in find_process_children(ppid=456,
+                                                            processes_by_parent=parent_procs,
+                                                            already_found=set())}
+        self.assertEqual({(789, "pv-bwrap", 456),
+                          (1011, "abc", 789),
+                          (1012, "def", 789)}, new_found)
+
+    def test_it_should_find_children_of_already_found_processes(self):
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "abc"), (1012, "def")}
+        }
+
+        already_found = {789}
+        new_found = {data for data in find_process_children(ppid=456,
+                                                            processes_by_parent=parent_procs,
+                                                            already_found=already_found)}
+        self.assertEqual({(1011, "abc", 789), (1012, "def", 789)}, new_found)
+
+    def test_it_should_not_find_children_recursively_when_recursive_is_false(self):
+        parent_procs = {
+            123: {(456, "reaper")},
+            456: {(789, "pv-bwrap")},
+            789: {(1011, "abc"), (1012, "def")}
+        }
+
+        new_found = {data for data in find_process_children(ppid=456,
+                                                            processes_by_parent=parent_procs,
+                                                            already_found=set(),
+                                                            recursive=False)}
+        self.assertEqual({(789, "pv-bwrap", 456)}, new_found)

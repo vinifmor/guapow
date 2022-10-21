@@ -204,3 +204,11 @@ class OptimizerConfigTest(TestCase):
     def test_default__renicer_interval_must_be_5_seconds(self):
         instance = OptimizerConfig.default()
         self.assertEqual(5, instance.renicer_interval)
+
+    def test_default__optimize_children_timeout_must_be_30_seconds(self):
+        instance = OptimizerConfig.default()
+        self.assertEqual(30, instance.optimize_children_timeout)
+
+    def test_default__optimize_children_found_timeout_must_be_10_seconds(self):
+        instance = OptimizerConfig.default()
+        self.assertEqual(10, instance.optimize_children_found_timeout)

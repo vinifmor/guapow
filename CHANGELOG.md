@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## NEXT
+### Improvements
+- optimizing the children of the target process
+- New optimizer service properties:
+  - `optimize_children.timeout`: maximum period in *seconds* to keep looking for the target process children (default: `30`). `0` can be defined if children should be ignored.
+  - `optimize_children.found_timeout`: maximum period in *seconds* to still keep looking for the target process children after a child in found (default: `10`). `0` can be defined if the search process should be interrupted immediately after a child is found.
+
 ### Fixes
 - Only checking for mapped processes when a process optimization is requested
 
