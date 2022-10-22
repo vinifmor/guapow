@@ -348,7 +348,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         mocked_call = MockedAsyncCall(results=[(0, "456# game_x86_64.bin\n789# other\n"),
                                                (0, "456# game_x86_64.bin\n789# other\n1011# game_x86_64.bin")],
-                                      await_time=0.0005)
+                                      await_time=0.001)
         async_syscall.side_effect = mocked_call.call
 
         map_launchers.return_value = {"game": ("game_x86_64.bin", LauncherSearchMode.NAME)}
@@ -356,7 +356,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
         request = OptimizationRequest(pid=123, command='/usr/local/bin/game', user_name='user')
         profile = new_steam_profile(enabled=False)
 
-        self.mapper = ExplicitLauncherMapper(check_time=0.01, found_check_time=-1, iteration_sleep_time=0,
+        self.mapper = ExplicitLauncherMapper(check_time=0.1, found_check_time=-1, iteration_sleep_time=0,
                                              logger=self.logger)
 
         async def map_pids() -> Set[int]:
@@ -385,7 +385,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
         profile = new_steam_profile(enabled=False)
 
         # setting 'found_check_time' to zero, so the next iteration wouldn't happen
-        self.mapper = ExplicitLauncherMapper(check_time=0.1, found_check_time=0, iteration_sleep_time=0,
+        self.mapper = ExplicitLauncherMapper(check_time=1, found_check_time=0, iteration_sleep_time=0,
                                              logger=self.logger)
 
         async def map_pids() -> Set[int]:
@@ -404,7 +404,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
-        self.mapper = SteamLauncherMapper(check_time=0.0001, found_check_time=0.0001, iteration_sleep_time=0,
+        self.mapper = SteamLauncherMapper(check_time=0.1, found_check_time=0, iteration_sleep_time=0,
                                           logger=Mock())
 
     @patch(f"{__app_name__}.common.system.async_syscall", return_value=(0, """
