@@ -6,7 +6,7 @@ from io import StringIO
 from multiprocessing import Manager, Process
 from multiprocessing.managers import DictProxy
 from re import Pattern
-from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collection
+from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collection, Generator
 
 BAD_USER_ENV_VARS = {'LD_PRELOAD'}
 T = TypeVar('T')
@@ -343,3 +343,53 @@ def new_user_process_response() -> DictProxy:
     proxy_res['pid'] = None
     return proxy_res
 
+
+async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:
+    exitcode, output = await async_syscall(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+
+    if exitcode == 0 and output:
+        proc_tree = dict()
+
+        for line in output.split("\n"):
+            line_strip = line.strip()
+
+            if line_strip:
+                line_split = line_strip.split('#', 2)
+
+                if len(line_split) > 2:
+                    ppid, pid, comm, = (e.strip() for e in line_split)
+                    try:
+                        ppid, pid = int(ppid), int(pid)
+                    except ValueError:
+                        continue
+
+                    children = proc_tree.get(ppid)
+
+                    if not children:
+                        children = set()
+                        proc_tree[ppid] = children
+
+                    children.add((pid, comm))
+
+        return proc_tree
+
+
+def find_process_children(ppid: int, processes_by_parent: Dict[int, Set[Tuple[int, str]]],
+                          comm_to_ignore: Optional[Set[str]] = None, already_found: Optional[Set[int]] = None,
+                          recursive: bool = True) \
+        -> Generator[Tuple[int, str, int], None, None]:
+    found = already_found if already_found is not None else set()
+
+    children = processes_by_parent.get(ppid)
+
+    if children:
+        for pid, comm in children:
+            if (not comm_to_ignore or comm not in comm_to_ignore) and "<defunct>" not in comm:
+                if pid not in found:
+                    yield pid, comm, ppid
+                    found.add(pid)
+
+                if recursive:
+                    for pid_, comm_, ppid_ in find_process_children(ppid=pid, processes_by_parent=processes_by_parent,
+                                                                    comm_to_ignore=comm_to_ignore, already_found=found):
+                        yield pid_, comm_, ppid_

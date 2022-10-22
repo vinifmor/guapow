@@ -18,6 +18,7 @@ class OptimizationContext:
                  cpufreq_man: Optional[CPUFrequencyManager], cpuenergy_man: Optional[CPUEnergyPolicyManager],
                  mouse_man: Optional[MouseCursorManager], queue: Optional[OptimizationQueue], cpu_count: int,
                  launcher_mapping_timeout: float, launcher_mapping_found_timeout: float, renicer_interval: float,
+                 search_children_timeout: float, search_children_found_timeout: float,
                  compositor: Optional[WindowCompositor] = None,  allow_root_scripts: bool = False,
                  compositor_disabled_context: Optional[dict] = None,
                  system_service: bool = False, gpu_ids: Optional[Set[str]] = None):
@@ -37,12 +38,14 @@ class OptimizationContext:
         self.renicer_interval = renicer_interval
         self.system_service = system_service
         self.gpu_ids = gpu_ids
+        self.search_children_timeout = search_children_timeout
+        self.search_children_found_timeout = search_children_found_timeout
 
     @classmethod
     def empty(cls) -> "OptimizationContext":
         return cls(gpu_man=None, mouse_man=None, logger=None, cpufreq_man=None, queue=None,
                    cpu_count=0, launcher_mapping_timeout=0, renicer_interval=0, cpuenergy_man=None,
-                   launcher_mapping_found_timeout=0)
+                   launcher_mapping_found_timeout=0, search_children_timeout=0, search_children_found_timeout=0)
 
     async def is_mouse_cursor_hidden(self) -> Optional[bool]:
         return await self.mouse_man.is_cursor_hidden() if self.mouse_man else None

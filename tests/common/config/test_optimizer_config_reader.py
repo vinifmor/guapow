@@ -177,3 +177,9 @@ class OptimizerConfigReaderTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(config)
         self.assertTrue(config.is_valid())
         self.assertIsNone(config.gpu_ids)
+
+    async def test_read_valid__return_instance_with_valid_optimize_children_found_timeout_defined(self):
+        file_path = f'{RESOURCES_DIR}/opt_children_found_timeout.conf'
+        config = await self.reader.read_valid(file_path=file_path)
+        self.assertIsNotNone(config)
+        self.assertEqual(0.001, config.optimize_children_found_timeout)

@@ -9,7 +9,7 @@ from guapow.service.optimizer.handler import OptimizationHandler
 from guapow.service.optimizer.profile import OptimizationProfile, CPUSettings, OptimizationProfileReader, \
     ProcessSettings, ProcessNiceSettings
 from guapow.service.optimizer.task.model import OptimizationContext, OptimizedProcess
-from tests import RESOURCES_DIR, AsyncIterator
+from tests import RESOURCES_DIR, AsyncIterator, MockedAsyncCall
 
 
 def get_test_user_profile_path(name: str, user_name: str):
@@ -26,7 +26,7 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         self.context = OptimizationContext.empty()
         self.context.logger = Mock()
         self.context.launcher_mapping_timeout = 1
-        self.request = OptimizationRequest(pid=32479274927, profile='test', command='/xpto', user_name='test')
+        self.request = OptimizationRequest(pid=1234, profile='test', command='/xpto', user_name='test')
         self.reader = OptimizationProfileReader(model_filler=FileModelFiller(Mock()), cache=None, logger=Mock())
         self.context.queue = OptimizationQueue({self.request.pid})
 
@@ -311,10 +311,9 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         self.assertNotIn(self.request.pid, self.context.queue.get_view())
 
     @patch('os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.service.optimizer.handler.run_tasks', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
     async def test_handle__must_remove_the_request_pid_after_the_optimizations(self, *mocks: Mock):
-        time_mock, run_tasks, os_path_exists = mocks[0], mocks[1], mocks[2]
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=None)
@@ -350,7 +349,8 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         exp_mapped_proc = exp_source_proc.clone()
         exp_mapped_proc.pid = 4788
 
-        run_tasks.assert_called_once_with((proc_task,), exp_mapped_proc)
+        # run_tasks.assert_called_once_with((proc_task,), exp_mapped_proc)
+        proc_task.run.assert_awaited_once_with(exp_mapped_proc)
         time_mock.assert_called()
 
         watcher_man.watch.assert_not_called()
@@ -359,10 +359,9 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         self.assertNotIn(4788, self.context.queue.get_view())
 
     @patch('os.path.exists', return_value=True)
-    @patch(f'{__app_name__}.service.optimizer.handler.run_tasks', return_value=None)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
-    async def test_handle__must_remove_the_source_pid_and_keep_the_mapped_pid_on_the_processing_queue_when_watched(self,*mocks: Mock):
-        time_mock, run_tasks, os_path_exists = mocks[0], mocks[1], mocks[2]
+    async def test_handle__must_remove_the_source_pid_and_keep_the_mapped_on_the_queue_when_watched(self, *mocks: Mock):
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=None)
@@ -397,7 +396,7 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         exp_mapped_proc = exp_source_proc.clone()
         exp_mapped_proc.pid = 4788
 
-        run_tasks.assert_called_once_with([proc_task], exp_mapped_proc)
+        proc_task.run.assert_awaited_once_with(exp_mapped_proc)
         time_mock.assert_called()
 
         watcher_man.watch.assert_awaited_once_with(exp_mapped_proc)
@@ -512,8 +511,8 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
 
     @patch('os.path.exists', return_value=True)
     @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
-    async def test_handle__must_execute_env_tasks_for_every_mapped_processes(self, *mocks: Mock):
-        time_mock, os_path_exists = mocks[0], mocks[1]
+    async def test_handle__must_run_env_tasks_for_every_mapped_process_when_no_proc_task_available(self, *mocks: Mock):
+        time_mock, os_path_exists = mocks
 
         tasks_man = MagicMock()
 
@@ -523,8 +522,7 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
         env_task = AsyncMock(side_effect=mock_cpu_change)
         tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
 
-        proc_task = AsyncMock()
-        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[])
 
         watcher_man = MagicMock()
         watcher_man.watch = AsyncMock()
@@ -561,7 +559,6 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
 
         time_mock.assert_called()
         env_task.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
-        proc_task.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
         watcher_man.watch.assert_has_calls([call(exp_cloned_proc_1), call(exp_cloned_proc_2)])
 
         for clone in (exp_cloned_proc_1, exp_cloned_proc_2):
@@ -667,3 +664,283 @@ class OptimizationHandlerTest(IsolatedAsyncioTestCase):
 
         watcher_man.watch.assert_awaited_once_with(exp_source_proc)
         self.assertIn(exp_source_proc.pid, self.context.queue.get_view())
+
+    @patch('os.path.exists', return_value=True)
+    @patch(f"{__app_name__}.service.optimizer.handler.map_processes_by_parent")
+    @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
+    async def test_handle__must_execute_env_and_proc_tasks_for_process_children_when_no_mapping(self, *mocks: Mock):
+        time_mock, map_processes_by_parent, os_path_exists = mocks
+
+        map_processes_by_parent.return_value = {1403: {(1234, "reaper")},
+                                                1234: {(1235, "ABC.x86_")},
+                                                1235: {(1236, "ABC.x86_-thread")},
+                                                1236: {(1237, "ABC.x86_-thread-2")}}
+        tasks_man = MagicMock()
+
+        async def mock_cpu_change(proc):
+            proc.cpu_energy_policy_changed = True
+
+        env_task = AsyncMock(side_effect=mock_cpu_change)
+        tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
+
+        proc_task = AsyncMock()
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+
+        watcher_man = MagicMock()
+        watcher_man.watch = AsyncMock()
+
+        self.request.config = "cpu.performance\nproc.nice=-1"
+        self.assertIn(self.request.pid, self.context.queue.get_view())
+
+        self.context.search_children_timeout = 0.001
+        self.context.search_children_found_timeout = 0  # returns after the first iteration
+        handler = OptimizationHandler(context=self.context, tasks_man=tasks_man, watcher_man=watcher_man,
+                                      profile_reader=self.reader)
+        handler._launcher_mapper = Mock(map_pids=Mock(return_value=AsyncIterator([])))
+        await handler.handle(self.request)
+
+        exp_prof = OptimizationProfile.empty()
+        exp_prof.process = ProcessSettings(None)
+        exp_prof.process.nice.level = -1
+        exp_prof.process.io = None
+        exp_prof.process.scheduling = None
+        exp_prof.cpu = CPUSettings(performance=True)
+
+        exp_source_proc = OptimizedProcess(self.request, profile=exp_prof, created_at=123456789)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        os_path_exists.assert_called_once_with(f'/proc/{self.request.pid}')
+
+        tasks_man.get_available_process_tasks.assert_called_once_with(exp_source_proc)
+        tasks_man.get_available_environment_tasks.assert_called_once_with(exp_source_proc)
+
+        time_mock.assert_called()
+        map_processes_by_parent.assert_called_once()
+
+        exp_children = []
+
+        for pid in (1235, 1236, 1237):
+            child = exp_source_proc.clone()
+            child.pid = pid
+            exp_children.append(child)
+
+        env_task.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        proc_task.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+
+        watcher_man.watch.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+
+        optimization_queue = self.context.queue.get_view()
+        self.assertIn(exp_source_proc.pid, optimization_queue)
+
+        for child in exp_children:
+            self.assertIn(child.pid, optimization_queue)
+
+    @patch('os.path.exists', return_value=True)
+    @patch(f"{__app_name__}.service.optimizer.handler.map_processes_by_parent")
+    @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
+    async def test_handle__must_execute_env_and_proc_tasks_for_process_children_when_mapping(self, *mocks: Mock):
+        time_mock, map_processes_by_parent, os_path_exists = mocks
+
+        map_processes_by_parent.return_value = {1403: {(1234, "reaper")},
+                                                1234: {(1235, "ABC.exe"), (1236, "ABC.x86")},
+                                                1235: {(1237, "ABC.x86_-thread")},
+                                                1236: {(1238, "ABC.x86_-thread-2")}}
+        tasks_man = MagicMock()
+
+        async def mock_cpu_change(proc):
+            proc.cpu_energy_policy_changed = True
+
+        env_task = AsyncMock(side_effect=mock_cpu_change)
+        tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
+
+        proc_task = AsyncMock()
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+
+        watcher_man = MagicMock()
+        watcher_man.watch = AsyncMock()
+
+        self.request.config = "cpu.performance\nproc.nice=-1"
+        self.assertIn(self.request.pid, self.context.queue.get_view())
+
+        self.context.search_children_timeout = 0.001
+        self.context.search_children_found_timeout = 0  # returns after the first iteration
+        handler = OptimizationHandler(context=self.context, tasks_man=tasks_man, watcher_man=watcher_man,
+                                      profile_reader=self.reader)
+        handler._launcher_mapper = Mock(map_pids=Mock(return_value=AsyncIterator([1235, 1236])))
+        await handler.handle(self.request)
+
+        exp_prof = OptimizationProfile.empty()
+        exp_prof.process = ProcessSettings(None)
+        exp_prof.process.nice.level = -1
+        exp_prof.process.io = None
+        exp_prof.process.scheduling = None
+        exp_prof.cpu = CPUSettings(performance=True)
+
+        exp_source_proc = OptimizedProcess(self.request, profile=exp_prof, created_at=123456789)
+
+        os_path_exists.assert_called_once_with(f'/proc/{self.request.pid}')
+
+        tasks_man.get_available_process_tasks.assert_called_once_with(exp_source_proc)
+        tasks_man.get_available_environment_tasks.assert_called_once_with(exp_source_proc)
+
+        time_mock.assert_called()
+        map_processes_by_parent.assert_called_once()
+
+        exp_children = []
+
+        for pid in (1235, 1236, 1237, 1238):
+            child = exp_source_proc.clone()
+            child.pid = pid
+            child.cpu_energy_policy_changed = True
+            exp_children.append(child)
+
+        env_task.assert_has_awaits([*(call(c) for c in exp_children)], any_order=True)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        proc_task.assert_has_awaits([*(call(c) for c in exp_children)], any_order=True)
+
+        watcher_man.watch.assert_has_awaits([*(call(c) for c in exp_children)], any_order=True)
+
+        optimization_queue = self.context.queue.get_view()
+        self.assertNotIn(exp_source_proc.pid, optimization_queue)
+
+        for child in exp_children:
+            self.assertIn(child.pid, optimization_queue)
+
+    @patch('os.path.exists', return_value=True)
+    @patch(f"{__app_name__}.service.optimizer.handler.map_processes_by_parent")
+    @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
+    async def test_handle__must_not_optimize_children_when_timeout_less_than_or_equal_to_zero(self, *mocks: Mock):
+        time_mock, map_processes_by_parent, os_path_exists = mocks
+
+        map_processes_by_parent.return_value = {1403: {(1234, "reaper")},
+                                                1234: {(1235, "ABC.x86_")},
+                                                1235: {(1236, "ABC.x86_-thread")},
+                                                1236: {(1237, "ABC.x86_-thread-2")}}
+        tasks_man = MagicMock()
+
+        async def mock_cpu_change(proc):
+            proc.cpu_energy_policy_changed = True
+
+        env_task = AsyncMock(side_effect=mock_cpu_change)
+        tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
+
+        proc_task = AsyncMock()
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+
+        watcher_man = MagicMock()
+        watcher_man.watch = AsyncMock()
+
+        self.request.config = "cpu.performance\nproc.nice=-1"
+        self.assertIn(self.request.pid, self.context.queue.get_view())
+
+        self.context.search_children_timeout = 0
+        handler = OptimizationHandler(context=self.context, tasks_man=tasks_man, watcher_man=watcher_man,
+                                      profile_reader=self.reader)
+        handler._launcher_mapper = Mock(map_pids=Mock(return_value=AsyncIterator([])))
+        await handler.handle(self.request)
+
+        exp_prof = OptimizationProfile.empty()
+        exp_prof.process = ProcessSettings(None)
+        exp_prof.process.nice.level = -1
+        exp_prof.process.io = None
+        exp_prof.process.scheduling = None
+        exp_prof.cpu = CPUSettings(performance=True)
+
+        exp_source_proc = OptimizedProcess(self.request, profile=exp_prof, created_at=123456789)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        os_path_exists.assert_called_once_with(f'/proc/{self.request.pid}')
+
+        tasks_man.get_available_process_tasks.assert_called_once_with(exp_source_proc)
+        tasks_man.get_available_environment_tasks.assert_called_once_with(exp_source_proc)
+
+        time_mock.assert_called()
+        map_processes_by_parent.assert_not_called()
+
+        env_task.assert_called_once_with(exp_source_proc)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        proc_task.assert_called_once_with(exp_source_proc)
+
+        watcher_man.watch.assert_called_once_with(exp_source_proc)
+
+        self.assertEqual({exp_source_proc.pid},  self.context.queue.get_view())
+
+    @patch('os.path.exists', return_value=True)
+    @patch(f"{__app_name__}.service.optimizer.handler.map_processes_by_parent")
+    @patch(f'{__app_name__}.service.optimizer.handler.time.time', return_value=123456789)
+    async def test_handle__must_stop_looking_for_children_when_found_timeout_is_reached(self, *mocks: Mock):
+        time_mock, map_processes_by_parent, os_path_exists = mocks
+
+        mocked_call = MockedAsyncCall(results=[{1403: {(1234, "reaper")},
+                                                1234: {(1235, "ABC.x86_")}},
+                                               {1403: {(1234, "reaper")},
+                                                1234: {(1235, "ABC.x86_")},
+                                                1235: {(1236, "ABC.x86_-thread")}}
+                                               ],
+                                      await_time=0.001)
+        map_processes_by_parent.side_effect = mocked_call.call
+        tasks_man = MagicMock()
+
+        async def mock_cpu_change(proc):
+            proc.cpu_energy_policy_changed = True
+
+        env_task = AsyncMock(side_effect=mock_cpu_change)
+        tasks_man.get_available_environment_tasks = AsyncMock(return_value=[Mock(run=env_task)])
+
+        proc_task = AsyncMock()
+        tasks_man.get_available_process_tasks = AsyncMock(return_value=[Mock(run=proc_task)])
+
+        watcher_man = MagicMock()
+        watcher_man.watch = AsyncMock()
+
+        self.request.config = "cpu.performance\nproc.nice=-1"
+        self.assertIn(self.request.pid, self.context.queue.get_view())
+
+        self.context.search_children_timeout = 0.1
+        self.context.search_children_found_timeout = 0.01
+        handler = OptimizationHandler(context=self.context, tasks_man=tasks_man, watcher_man=watcher_man,
+                                      profile_reader=self.reader)
+        handler._launcher_mapper = Mock(map_pids=Mock(return_value=AsyncIterator([])))
+        await handler.handle(self.request)
+
+        exp_prof = OptimizationProfile.empty()
+        exp_prof.process = ProcessSettings(None)
+        exp_prof.process.nice.level = -1
+        exp_prof.process.io = None
+        exp_prof.process.scheduling = None
+        exp_prof.cpu = CPUSettings(performance=True)
+
+        exp_source_proc = OptimizedProcess(self.request, profile=exp_prof, created_at=123456789)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        os_path_exists.assert_called_once_with(f'/proc/{self.request.pid}')
+
+        tasks_man.get_available_process_tasks.assert_called_once_with(exp_source_proc)
+        tasks_man.get_available_environment_tasks.assert_called_once_with(exp_source_proc)
+
+        time_mock.assert_called()
+        self.assertGreaterEqual(map_processes_by_parent.call_count, 2)
+
+        exp_children = []
+
+        for pid in (1235, 1236):
+            child = exp_source_proc.clone()
+            child.pid = pid
+            exp_children.append(child)
+
+        env_task.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+        exp_source_proc.cpu_energy_policy_changed = True
+
+        proc_task.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+
+        watcher_man.watch.assert_has_awaits([call(exp_source_proc), *(call(c) for c in exp_children)], any_order=True)
+
+        optimization_queue = self.context.queue.get_view()
+        self.assertIn(exp_source_proc.pid, optimization_queue)
+
+        for child in exp_children:
+            self.assertIn(child.pid, optimization_queue)
