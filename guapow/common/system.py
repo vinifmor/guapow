@@ -3,7 +3,7 @@ import os
 import subprocess
 import traceback
 from io import StringIO
-from multiprocessing import Manager, Process
+from multiprocessing import Manager
 from multiprocessing.managers import DictProxy
 from re import Pattern
 from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collection, Generator
@@ -320,21 +320,27 @@ def run_user_command(cmd: str, user_id: int, wait: bool, timeout: Optional[float
             response['output'] = traceback.format_exc()
 
 
-async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict], forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS) -> Tuple[int, Optional[str]]:
-    res = new_user_process_response()
+async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict],
+                                 forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS) \
+        -> Tuple[int, Optional[str]]:
+    args = {"cmd": cmd, "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "preexec_fn": lambda: os.setuid(user_id)}
+
+    if user_env:
+        if forbidden_env_vars:
+            args['env'] = {k: v for k, v in user_env.items() if k not in forbidden_env_vars}
+        else:
+            args['env'] = user_env
 
     try:
-        p = Process(target=run_user_command, kwargs={'cmd': cmd, 'user_id': user_id, 'wait': True, 'timeout': None, 'env': user_env,
-                                                     'response': res, 'forbidden_env_vars': forbidden_env_vars})
-        p.start()
-
-        while p.is_alive():
-            await asyncio.sleep(0.001)
-
-        return res['exitcode'], res['output']
-    except:
-        error_msg = traceback.format_exc().replace('\n', ' ')
-        return 1, error_msg
+        p = await asyncio.create_subprocess_shell(**args)
+        os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
+        await p.wait()
+        return p.returncode, (await p.stdout.read()).decode()
+    except Exception:
+        return 1, traceback.format_exc().replace('\n', ' ')
 
 
 def new_user_process_response() -> DictProxy:
