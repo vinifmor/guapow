@@ -2,12 +2,12 @@ import asyncio
 import re
 import traceback
 from abc import ABC, abstractmethod
-from multiprocessing import Process
 from re import Pattern
 from typing import List, Optional, Dict, Set, Tuple, Type, Awaitable
 
 from guapow.common import system
 from guapow.common.scripts import RunScripts
+from guapow.common.system import run_async_user_process
 from guapow.common.users import is_root_user
 from guapow.service.optimizer.gpu import GPUState, GPUDriver
 from guapow.service.optimizer.post_process.context import PostProcessContext
@@ -281,13 +281,10 @@ class RelaunchStoppedProcesses(PostProcessTask):
             stack_log = traceback.format_exc().replace('\n', ' ')
             self._log.warning(f"An exception happened when relaunching process '{name}' ({cmd}): {stack_log}")
 
-    def _run_user_command(self, name: str, cmd: str, user_id: int, user_env: Optional[Dict[str, str]] = None):
-        try:
-            Process(daemon=True, target=system.run_user_command, kwargs={'cmd': cmd, 'user_id': user_id, 'env': user_env, 'wait': False}).start()
-            self._log.info(f"Process '{name}' ({cmd}) relaunched (user={user_id})")
-        except:
-            stack_log = traceback.format_exc().replace('\n', ' ')
-            self._log.warning(f"An exception happened when relaunching process '{name}' ({cmd}) [user={user_id}]: {stack_log}")
+    async def _run_user_command(self, name: str, cmd: str, user_id: int, user_env: Optional[Dict[str, str]] = None):
+        await run_async_user_process(cmd=cmd, user_id=user_id, user_env=user_env, wait=False, output=False,
+                                     exception_output=False)
+        self._log.info(f"Process '{name}' ({cmd}) relaunched (user={user_id})")
 
     async def run(self, context: PostProcessContext):
         self_is_root = is_root_user()
@@ -313,7 +310,7 @@ class RelaunchStoppedProcesses(PostProcessTask):
                 if root_request:
                     await self._run_command(name, real_cmd)
                 else:
-                    self._run_user_command(name, real_cmd, context.user_id, context.user_env)
+                    await self._run_user_command(name, real_cmd, context.user_id, context.user_env)
             else:
                 await self._run_command(name, real_cmd)
 

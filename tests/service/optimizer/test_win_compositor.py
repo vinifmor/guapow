@@ -15,7 +15,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
     def setUp(self):
         self.expected_inxi_cmd = 'inxi -Gxx -c 0'
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 'compositor: xpto'))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, 'compositor: xpto'))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test_return_none_when_inxi_returns_a_not_supported_compositor_name(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
@@ -24,7 +24,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNone(compositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: kwin_x11 driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -37,7 +37,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, KWinCompositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: xfwm4 driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -50,7 +50,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, Xfwm4Compositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: metacity driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -63,7 +63,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
   driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
   Display: x11 server: X.Org 1.20.11 compositor: marco driver: 
   loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -76,7 +76,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: compton driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -90,7 +90,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsInstance(compositor, PicomCompositor)
         self.assertEqual('Compton', compositor.get_name())
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: picom driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -104,7 +104,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsInstance(compositor, PicomCompositor)
         self.assertEqual('Picom', compositor.get_name())
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, """  Device-1: InnoTek Systemberatung VirtualBox Graphics Adapter 
     driver: vboxvideo v: kernel bus-ID: 00:02.0 chip-ID: 80ee:beef 
     Display: x11 server: X.Org 1.20.11 compositor: compiz driver: 
     loaded: modesetting alternate: fbdev,vboxvideo,vesa"""))
@@ -118,7 +118,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsInstance(compositor, CompizCompositor)
         self.assertEqual('Compiz', compositor.get_name())
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, "Device: xpto"))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test__return_kwin_when_inxi_does_not_return_it_but_desktop_env_is_kde(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'KDE'}
@@ -129,7 +129,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsInstance(compositor, KWinCompositor)
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, "Device: xpto"))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test__return_marco_when_inxi_does_not_return_it_but_desktop_env_is_mate(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'Mate'}
@@ -139,7 +139,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, MarcoCompositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, "Device: xpto"))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test__return_xfwm4_when_inxi_does_not_return_it_but_desktop_env_is_xfce(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'XFCE'}
@@ -149,7 +149,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(compositor)
         self.assertIsInstance(compositor, Xfwm4Compositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, "Device: xpto"))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_supported(self, which: Mock, run_user_process: Mock):
         env = {'XDG_CURRENT_DESKTOP': 'Gnome'}
@@ -158,7 +158,7 @@ class GetWindowCompositorTest(IsolatedAsyncioTestCase):
         run_user_process.assert_called_once_with(cmd=self.expected_inxi_cmd, user_id=123, user_env=env)
         self.assertIsNone(compositor)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, "Device: xpto"))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.run_async_user_process', return_value=(0, 0, "Device: xpto"))
     @patch(f'{__app_name__}.service.optimizer.win_compositor.which', return_value='/usr/bin/inxi')
     async def test__return_none_when_inxi_does_not_return_it_and_desktop_env_is_not_available(self, which: Mock, run_user_process: Mock):
         env = {'abc': '123'}
@@ -419,7 +419,7 @@ class WindowCompositorNoCLITest(IsolatedAsyncioTestCase):
     async def test_enable__false_when_enable_command_is_not_defined_on_context(self):
         self.assertFalse(await self.compositor.enable(123, {'abc': '123'}, context={}))
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.system.run_async_user_process', return_value=(1, 'error'))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.system.run_async_user_process', return_value=(0, 1, 'error'))
     async def test_enable__false_when_compositor_process_could_not_be_started(self, run_async_user_process: Mock):
         user_env = {'abc': '123'}
         context = {'cmd': 'compton -b'}
@@ -428,7 +428,7 @@ class WindowCompositorNoCLITest(IsolatedAsyncioTestCase):
 
         run_async_user_process.assert_called_once_with(cmd=context['cmd'], user_id=123, user_env=user_env)
 
-    @patch(f'{__app_name__}.service.optimizer.win_compositor.system.run_async_user_process', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.win_compositor.system.run_async_user_process', return_value=(0, 0, None))
     async def test_enable__true_when_compositor_could_be_started(self, run_async_user_process: Mock):
         user_env = {'abc': '123'}
         context = {'cmd': 'compton -b'}

@@ -70,8 +70,8 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
         mocked_proc_wait.assert_not_called()
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', side_effect=[True, False, False, False])
-    @patch(f'{__app_name__}.common.scripts.Process', side_effect=UserProcessMock(pids=[5, 7, 9]).run)
-    async def test_run__must_run_scripts_as_another_user_when_current_user_is_root_and_user_is_defined(self, run_user_command: Mock, is_root_user: Mock):
+    @patch(f'{__app_name__}.common.scripts.run_async_user_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
+    async def test_run__must_run_scripts_as_another_user_when_current_user_is_root_and_user_is_defined(self, run_async_user_process: Mock, is_root_user: Mock):
         user_id, user_env = 123, {'DISPLAY': ':0'}
 
         scripts = [ScriptSettings(node_name='', scripts=['/abc', '/def'], run_as_root=False, wait_execution=False),
@@ -80,15 +80,15 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(3, is_root_user.call_count)
 
-        run_user_command.assert_has_calls([
-            call(daemon=True, target=system.run_user_command, args=('/abc', user_id, False, None, user_env, AnyInstance(DictProxy))),
-            call(daemon=True, target=system.run_user_command, args=('/def', user_id, False, None, user_env, AnyInstance(DictProxy))),
-            call(daemon=True, target=system.run_user_command, args=('/ghi', user_id, False, None, user_env, AnyInstance(DictProxy)))
+        run_async_user_process.assert_has_calls([
+            call(cmd='/abc', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False),
+            call(cmd='/def', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False),
+            call(cmd='/ghi', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False)
         ])
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', side_effect=[True, False, False, False])
-    @patch(f'{__app_name__}.common.scripts.Process', side_effect=UserProcessMock(pids=[5, 7, 9]).run)
-    async def test_run__must_run_scripts_as_another_user_and_wait_timeout_when_current_user_is_root_and_user_is_defined(self, run_user_command: Mock, is_root_user: Mock):
+    @patch(f'{__app_name__}.common.scripts.run_async_user_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
+    async def test_run__must_run_scripts_as_another_user_and_wait_timeout_when_current_user_is_root_and_user_is_defined(self, run_async_user_process: Mock, is_root_user: Mock):
         user_id, user_env = 123, {'DISPLAY': ':0'}
 
         scripts = [ScriptSettings(node_name='', scripts=['/abc', '/def'], run_as_root=False, timeout=0.001),
@@ -97,10 +97,10 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(3, is_root_user.call_count)
 
-        run_user_command.assert_has_calls([
-            call(daemon=True, target=system.run_user_command, args=('/abc', user_id, False, 0.001, user_env, AnyInstance(DictProxy))),
-            call(daemon=True, target=system.run_user_command, args=('/def', user_id, False, 0.001, user_env, AnyInstance(DictProxy))),
-            call(daemon=True, target=system.run_user_command, args=('/ghi', user_id, False, 0.001, user_env, AnyInstance(DictProxy)))
+        run_async_user_process.assert_has_calls([
+            call(cmd='/abc', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False),
+            call(cmd='/def', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False),
+            call(cmd='/ghi', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False)
         ])
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', return_value=True)
