@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## NEXT
+### Fixes
+- the optimizer service (as root) not able to execute some commands in behalf of the non-root user (started with Python 3.10.9)
+
 ## [1.3.1] 2022-10-22
 ### Improvements
 - Optimizing the children of the target process

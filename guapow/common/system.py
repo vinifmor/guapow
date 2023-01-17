@@ -277,10 +277,12 @@ async def find_children(ppids: Set[int], ppid_map: Optional[Dict[int, Set[int]]]
 
 
 def run_user_command(cmd: str, user_id: int, wait: bool, timeout: Optional[float] = None,
-                     env: Optional[dict] = None, response: Optional[DictProxy] = None, forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS):
+                     env: Optional[dict] = None, response: Optional[DictProxy] = None,
+                     forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS):
     args = {"args": cmd, "shell": True, "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE if wait else subprocess.DEVNULL,
-            "stderr": subprocess.STDOUT if wait else subprocess.DEVNULL}
+            "stderr": subprocess.STDOUT if wait else subprocess.DEVNULL,
+            "preexec_fn": lambda: os.setuid(user_id)}
 
     if env:
         if forbidden_env_vars:
@@ -290,7 +292,6 @@ def run_user_command(cmd: str, user_id: int, wait: bool, timeout: Optional[float
 
     try:
         os.setpriority(os.PRIO_PROCESS, os.getpid(), 0)  # always launch a command with nice 0
-        os.setuid(user_id)
 
         p = subprocess.Popen(**args)
 
