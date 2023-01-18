@@ -2,14 +2,19 @@ import asyncio
 import os
 import subprocess
 import traceback
+from datetime import datetime, timedelta
 from io import StringIO
-from multiprocessing import Manager
-from multiprocessing.managers import DictProxy
 from re import Pattern
 from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collection, Generator
 
 BAD_USER_ENV_VARS = {'LD_PRELOAD'}
 T = TypeVar('T')
+
+
+class ProcessTimedOutError(Exception):
+    def __init__(self, pid: int):
+        super(ProcessTimedOutError, self).__init__()
+        self.pid = pid
 
 
 def syscall(cmd: str, shell: bool = True, cwd: Optional[str] = None, custom_env: Optional[dict] = None, stdin: bool = False, return_output: bool = True) -> Tuple[int, Optional[str]]:
@@ -276,53 +281,25 @@ async def find_children(ppids: Set[int], ppid_map: Optional[Dict[int, Set[int]]]
     return children_list
 
 
-def run_user_command(cmd: str, user_id: int, wait: bool, timeout: Optional[float] = None,
-                     env: Optional[dict] = None, response: Optional[DictProxy] = None,
-                     forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS):
-    args = {"args": cmd, "shell": True, "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.PIPE if wait else subprocess.DEVNULL,
-            "stderr": subprocess.STDOUT if wait else subprocess.DEVNULL,
-            "preexec_fn": lambda: os.setuid(user_id)}
-
-    if env:
-        if forbidden_env_vars:
-            args['env'] = {k: v for k, v in env.items() if k not in forbidden_env_vars}
-        else:
-            args['env'] = env
-
-    try:
-        os.setpriority(os.PRIO_PROCESS, os.getpid(), 0)  # always launch a command with nice 0
-
-        p = subprocess.Popen(**args)
-
-        if response is not None:
-            response['pid'] = p.pid
-
-        if timeout is not None and timeout > 0:
-            p.wait(timeout)
-        elif wait:
-            p.wait()
-
-        if response is not None:
-            response['exitcode'] = p.returncode
-
-            string = StringIO()
-            for output in p.stdout:
-                decoded = output.decode()
-                string.write(decoded)
-
-            string.seek(0)
-            response['output'] = string.read()
-
-    except Exception as e:
-        if response is not None:
-            response['exitcode'] = 1
-            response['output'] = traceback.format_exc()
-
-
 async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict],
-                                 forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS) \
-        -> Tuple[int, Optional[str]]:
+                                 forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS,
+                                 wait: bool = True, timeout: Optional[float] = None, output: bool = True,
+                                 exception_output: bool = True) \
+        -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """
+    Runs a process as a different user (the client code must have permission to do that)
+    Args:
+        cmd:
+        user_id:
+        user_env:
+        forbidden_env_vars:
+        wait:
+        timeout: in seconds
+        output: if the process output should be read and returned
+        exception_output: if the traceback of an unexpected raised exception should be returned as the output
+    Returns: a tuple containing the process id, exitcode and output as a String
+
+    """
     args = {"cmd": cmd, "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE,
             "stderr": subprocess.STDOUT,
@@ -336,19 +313,34 @@ async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict
 
     try:
         p = await asyncio.create_subprocess_shell(**args)
-        os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
-        await p.wait()
-        return p.returncode, (await p.stdout.read()).decode()
     except Exception:
-        return 1, traceback.format_exc().replace('\n', ' ')
+        return None, 1, (traceback.format_exc().replace('\n', ' ') if exception_output else None)
 
+    try:
+        os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
+    except Exception:
+        pass  # do nothing in case the priority could not be changed
 
-def new_user_process_response() -> DictProxy:
-    proxy_res = Manager().dict()
-    proxy_res['exitcode'] = None
-    proxy_res['output'] = None
-    proxy_res['pid'] = None
-    return proxy_res
+    try:
+        if wait:
+            if timeout is None or timeout < 0:
+                return p.pid, await p.wait(), ((await p.stdout.read()).decode() if output else None)
+            elif timeout and timeout > 0:
+                timeout_at = datetime.now() + timedelta(seconds=timeout)
+
+                while datetime.now() < timeout_at:
+                    if p.returncode is not None:
+                        return p.pid, p.returncode, ((await p.stdout.read()).decode() if output else None)
+
+                    await asyncio.sleep(0.0005)
+
+                raise ProcessTimedOutError(p.pid)
+
+        return p.pid, p.returncode, None
+    except ProcessTimedOutError:
+        raise
+    except Exception:
+        return p.pid, 1, (traceback.format_exc().replace('\n', ' ') if exception_output else None)
 
 
 async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:

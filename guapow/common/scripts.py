@@ -3,12 +3,10 @@ import datetime
 import os
 import subprocess
 from logging import Logger
-from multiprocessing import Process
 from typing import Optional, List, Dict, Set
 
-from guapow.common import system
 from guapow.common.model import ScriptSettings
-from guapow.common.system import run_user_command
+from guapow.common.system import run_async_user_process, ProcessTimedOutError
 from guapow.common.users import is_root_user
 
 
@@ -19,29 +17,30 @@ class RunScripts:
         self._log = logger
         self.root_allowed = root_allowed
 
-    async def _execute_user_scripts(self, settings: ScriptSettings, user_id: int, user_env: Optional[Dict[str, str]]) -> Set[int]:
+    async def _execute_user_scripts(self, settings: ScriptSettings, user_id: int,
+                                    user_env: Optional[Dict[str, str]]) -> Set[int]:
         pids = set()
 
         for cmd in settings.scripts:
-            res = system.new_user_process_response()
-
             self._log.info(f"Running {self._name} script '{cmd}' (user={user_id})")
-            p = Process(daemon=True, target=run_user_command, args=(cmd, user_id, settings.wait_execution, settings.timeout, user_env, res))
-            p.start()
+            should_wait = bool(settings.wait_execution or (settings.timeout is not None and settings.timeout > 0))
 
-            if settings.wait_execution or (settings.timeout is not None and settings.timeout > 0):
+            if should_wait:
                 self._log.info(f"Waiting {self._name} script '{cmd}' to finish (user={user_id})")
 
-                while p.is_alive():  # to allow other async tasks to execute
-                    await asyncio.sleep(0.0005)
+            try:
+                pid, _, __ = await run_async_user_process(cmd=cmd, user_id=user_id, user_env=user_env,
+                                                          wait=should_wait, timeout=settings.timeout,
+                                                          output=False)
+                if pid is not None:
+                    pids.add(pid)
+                    if should_wait:
+                        self._log.info(f"{self._name.capitalize()} script '{cmd}' finished (user={user_id})")
 
-                self._log.info(f"{self._name.capitalize()} script '{cmd}' finished (user={user_id})")
-
-            p.join()
-
-            if res['pid'] is not None:
-                pids.add(res['pid'])
-
+            except ProcessTimedOutError as e:
+                self._log.info(f"{self._name} script '{cmd}' timed out (user={user_id})")
+                if isinstance(e.pid, int):
+                    pids.add(e.pid)
         return pids
 
     @staticmethod
