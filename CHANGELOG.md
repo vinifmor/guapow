@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - replaced some subprocess calls executed in behalf of non-root users by async calls (Python's asyncio native approach)
 
 ### Fixes
-- the optimizer service (as root) not able to execute some commands in behalf of the non-root user (started with Python 3.10.9)
+- the optimizer service (as root) not able to execute some commands in behalf of non-root users (started with Python 3.10.9)
 
 ## [1.3.1] 2022-10-22
 ### Improvements
