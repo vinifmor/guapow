@@ -70,8 +70,9 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
         mocked_proc_wait.assert_not_called()
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', side_effect=[True, False, False, False])
-    @patch(f'{__app_name__}.common.scripts.run_async_user_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
-    async def test_run__must_run_scripts_as_another_user_when_current_user_is_root_and_user_is_defined(self, run_async_user_process: Mock, is_root_user: Mock):
+    @patch(f'{__app_name__}.common.scripts.run_async_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
+    async def test_run__must_run_scripts_as_another_user_when_current_user_is_root_and_user_is_set(self, *mocks: Mock):
+        run_async_process, is_root_user = mocks
         user_id, user_env = 123, {'DISPLAY': ':0'}
 
         scripts = [ScriptSettings(node_name='', scripts=['/abc', '/def'], run_as_root=False, wait_execution=False),
@@ -80,15 +81,17 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(3, is_root_user.call_count)
 
-        run_async_user_process.assert_has_calls([
-            call(cmd='/abc', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False),
-            call(cmd='/def', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False),
-            call(cmd='/ghi', user_id=user_id, user_env=user_env, wait=False, timeout=None, output=False)
+        run_async_process.assert_has_calls([
+            call(cmd='/abc', user_id=user_id, custom_env=user_env, wait=False, timeout=None, output=False),
+            call(cmd='/def', user_id=user_id, custom_env=user_env, wait=False, timeout=None, output=False),
+            call(cmd='/ghi', user_id=user_id, custom_env=user_env, wait=False, timeout=None, output=False)
         ])
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', side_effect=[True, False, False, False])
-    @patch(f'{__app_name__}.common.scripts.run_async_user_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
-    async def test_run__must_run_scripts_as_another_user_and_wait_timeout_when_current_user_is_root_and_user_is_defined(self, run_async_user_process: Mock, is_root_user: Mock):
+    @patch(f'{__app_name__}.common.scripts.run_async_process', side_effect=[(5, None, None), (7, None, None), (9, None, None)])
+    async def test_run__must_run_scripts_as_another_user_and_wait_timeout_when_current_user_is_root_and_user_is_defined(self, *mocks: Mock):
+        run_async_process, is_root_user = mocks
+
         user_id, user_env = 123, {'DISPLAY': ':0'}
 
         scripts = [ScriptSettings(node_name='', scripts=['/abc', '/def'], run_as_root=False, timeout=0.001),
@@ -97,10 +100,10 @@ class RunScriptsTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(3, is_root_user.call_count)
 
-        run_async_user_process.assert_has_calls([
-            call(cmd='/abc', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False),
-            call(cmd='/def', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False),
-            call(cmd='/ghi', user_id=user_id, user_env=user_env, wait=True, timeout=0.001, output=False)
+        run_async_process.assert_has_calls([
+            call(cmd='/abc', user_id=user_id, custom_env=user_env, wait=True, timeout=0.001, output=False),
+            call(cmd='/def', user_id=user_id, custom_env=user_env, wait=True, timeout=0.001, output=False),
+            call(cmd='/ghi', user_id=user_id, custom_env=user_env, wait=True, timeout=0.001, output=False)
         ])
 
     @patch(f'{__app_name__}.common.scripts.is_root_user', return_value=True)

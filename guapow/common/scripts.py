@@ -6,7 +6,7 @@ from logging import Logger
 from typing import Optional, List, Dict, Set
 
 from guapow.common.model import ScriptSettings
-from guapow.common.system import run_async_user_process, ProcessTimedOutError
+from guapow.common.system import run_async_process, ProcessTimedOutError
 from guapow.common.users import is_root_user
 
 
@@ -29,9 +29,9 @@ class RunScripts:
                 self._log.info(f"Waiting {self._name} script '{cmd}' to finish (user={user_id})")
 
             try:
-                pid, _, __ = await run_async_user_process(cmd=cmd, user_id=user_id, user_env=user_env,
-                                                          wait=should_wait, timeout=settings.timeout,
-                                                          output=False)
+                pid, _, __ = await run_async_process(cmd=cmd, user_id=user_id, custom_env=user_env,
+                                                     wait=should_wait, timeout=settings.timeout,
+                                                     output=False)
                 if pid is not None:
                     pids.add(pid)
                     if should_wait:
@@ -52,7 +52,7 @@ class RunScripts:
 
         return final_env
 
-    async def _execute_scripts(self, settings: ScriptSettings, user_env: Optional[Dict[str, str]]) -> Set[int]:
+    async def _execute_scripts(self, settings: ScriptSettings, user_env: Optional[Dict[str, str]]) -> Set[int]:  # TODO refact
         pids = set()
         env = self.get_environ(user_env)
 

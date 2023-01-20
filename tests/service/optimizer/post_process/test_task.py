@@ -37,7 +37,9 @@ class PostStopProcessesTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_children', return_value=[])
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
-    async def test_restore__call_kill_only_for_passed_pids_when_no_children(self, async_syscall: Mock, find_children: Mock):
+    async def test_restore__call_kill_only_for_passed_pids_when_no_children(self, *mocks: Mock):
+        async_syscall, find_children = mocks
+
         context = PostProcessContext.empty()
         context.pids_to_stop = {999, 888}
         await self.task.run(context)
@@ -51,7 +53,9 @@ class PostStopProcessesTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_children', return_value=[222, 333, 444])
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
-    async def test_restore__call_kill_for_passed_pids_and_their_children(self, async_syscall: Mock, find_children: Mock):
+    async def test_restore__call_kill_for_passed_pids_and_their_children(self, *mocks: Mock):
+        async_syscall, find_children = mocks
+
         context = PostProcessContext.empty()
         context.pids_to_stop = {999, 888}
 
@@ -242,12 +246,12 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
         self.post_context.user_id = 0
         self.assertTrue(self.task.should_run(self.post_context))
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.run_async_user_process')
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value=None)
     @patch('os.getuid', return_value=12312)
     async def test_run__must_not_launch_commands_when_not_running_as_root_and_root_request(self, *mocks: Mock):
-        getuid, find_processes_by_command, async_syscall, run_async_user_process = mocks
+        getuid, find_processes_by_command, async_syscall, run_async_process = mocks
         self.post_context.stopped_processes = ['/abc']
         self.post_context.user_id = 0
 
@@ -256,14 +260,13 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
         getuid.assert_called_once()
         find_processes_by_command.assert_not_called()
         async_syscall.assert_not_called()
-        run_async_user_process.assert_not_called()
+        run_async_process.assert_not_called()
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.run_async_user_process')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value=None)
     @patch('os.getuid', return_value=0)
     async def test_run__must_launch_commands_as_root_when_root_request(self, *mocks: Mock):
-        getuid, find_processes_by_command, async_syscall, run_async_user_process = mocks
+        getuid, find_processes_by_command, run_async_process = mocks
 
         self.post_context.stopped_processes = [('abc', '/abc')]
         self.post_context.user_id = 0
@@ -272,14 +275,14 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once()
-        async_syscall.assert_called_once_with('/abc', return_output=False, wait=False)
-        run_async_user_process.assert_not_called()
+        run_async_process.assert_called_once_with(cmd="/abc", user_id=None, custom_env=None, wait=False,
+                                                  output=False, exception_output=False)
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.RelaunchStoppedProcesses._run_user_command')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value=None)
     @patch('os.getuid', return_value=1234)
-    async def test_run__must_launch_commands_as_user_when_user_request(self, getuid: Mock, find_processes_by_command: Mock, async_syscall: Mock, _run_user_command: Mock):
+    async def test_run__must_launch_commands_as_user_when_user_request(self, *mocks: Mock):
+        getuid, find_processes_by_command, run_async_process = mocks
         self.post_context.stopped_processes = [('abc', '/abc'), ('def', '/def')]
         self.post_context.user_id = 1234
 
@@ -287,15 +290,16 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once()
-        _run_user_command.assert_not_called()
-        async_syscall.assert_has_calls([call('/abc', return_output=False, wait=False),
-                                        call('/def', return_output=False, wait=False)])
+        run_async_process.assert_has_calls([call(cmd="/abc", user_id=None, custom_env=None,
+                                                 wait=False, output=False, exception_output=False),
+                                            call(cmd="/def", user_id=None, custom_env=None,
+                                                 wait=False, output=False, exception_output=False)])
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.RelaunchStoppedProcesses._run_user_command')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value=None)
     @patch('os.getuid', return_value=0)
-    async def test_run__must_launch_commands_when_root_and_user_request(self, getuid: Mock, find_processes_by_command: Mock, async_syscall: Mock, _run_user_command: Mock):
+    async def test_run__must_launch_commands_when_root_and_user_request(self, *mocks: Mock):
+        getuid, find_processes_by_command, run_async_process = mocks
         self.post_context.stopped_processes = [('abc', '/abc'), ('def', '/def')]
         self.post_context.user_id = 1234
         self.post_context.user_env = {'ABC': '123'}
@@ -304,39 +308,39 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once()
-        async_syscall.assert_not_called()
 
-        expected_calls = [call(c[0], c[1], self.post_context.user_id, self.post_context.user_env) for c in self.post_context.stopped_processes]
-        _run_user_command.assert_has_calls(expected_calls)
+        expected_calls = [call(cmd=c[1], user_id=self.post_context.user_id, custom_env=self.post_context.user_env,
+                               wait=False, output=False, exception_output=False)
+                          for c in self.post_context.stopped_processes]
+        run_async_process.assert_has_calls(expected_calls)
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.RelaunchStoppedProcesses._run_user_command')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value=None)
     @patch('os.getuid', return_value=1234)
-    async def test_run__must_launch_python_script_without_python_command_prefix(self, getuid: Mock, find_processes_by_command: Mock, async_syscall: Mock, _run_user_command: Mock):
+    async def test_run__must_launch_python_script_without_python_command_prefix(self, *mocks: Mock):
         """
         otherwise the relaunched process will be named 'python' instead of the original name
         """
+        getuid, find_processes_by_command, run_async_process = mocks
 
         self.post_context.stopped_processes = [('xpto-bin', '/usr/bin/python3 /usr/bin/xpto-bin'),
                                                ('abc', '/usr/bin/python /usr/bin/abc'),
-                                               ('def', '/bin/def')]  # no pýthon command
+                                               ('def', '/bin/def')]  # no python command
         self.post_context.user_id = 1234
 
         await self.task.run(self.post_context)
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once()
-        _run_user_command.assert_not_called()
-        async_syscall.assert_has_calls([call('/usr/bin/xpto-bin', return_output=False, wait=False),
-                                        call('/usr/bin/abc', return_output=False, wait=False),
-                                        call('/bin/def', return_output=False, wait=False)])
+        expected_calls = [call(cmd=c, user_id=None, custom_env=None, wait=False, output=False, exception_output=False)
+                          for c in ("/usr/bin/xpto-bin", "/usr/bin/abc", "/bin/def")]
+        run_async_process.assert_has_calls(expected_calls)
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.RelaunchStoppedProcesses._run_user_command')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
     @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value={'/abc': 5, '/ghi': 8})
     @patch('os.getuid', return_value=1234)
-    async def test_run__must_not_launch_commands_already_running(self, getuid: Mock, find_processes_by_command: Mock, async_syscall: Mock, _run_user_command: Mock):
+    async def test_run__must_not_launch_commands_already_running(self, *mocks: Mock):
+        getuid, find_processes_by_command, run_async_process = mocks
         self.post_context.stopped_processes = [('abc', '/abc'), ('def', '/def'), ('ghi', '/ghi')]
         self.post_context.user_id = 1234
 
@@ -344,23 +348,25 @@ class RelaunchStoppedProcessesTest(IsolatedAsyncioTestCase):
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once_with({'/abc', '/def', '/ghi'})
-        _run_user_command.assert_not_called()
-        async_syscall.assert_has_calls([call('/def', return_output=False, wait=False)])
+        run_async_process.assert_called_once_with(cmd="/def", user_id=None, custom_env=None,
+                                                  wait=False, output=False, exception_output=False)
 
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.RelaunchStoppedProcesses._run_user_command')
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.async_syscall', return_value=(0, None))
-    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command', return_value={'/abc': 5, '/def': 6, '/usr/bin/python3 /usr/bin/ghi': 8})
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.run_async_process')
+    @patch(f'{__app_name__}.service.optimizer.post_process.task.system.find_processes_by_command')
     @patch('os.getuid', return_value=1234)
-    async def test_run__must_not_launch_commands_any_command_if_all_are_running(self, getuid: Mock, find_processes_by_command: Mock, async_syscall: Mock, _run_user_command: Mock):
-        self.post_context.stopped_processes = [('abc', '/abc'), ('def', '/def'), ('ghi', '/usr/bin/python3 /usr/bin/ghi')]
+    async def test_run__must_not_launch_commands_any_command_if_all_are_running(self, *mocks: Mock):
+        getuid, find_processes_by_command, run_async_process = mocks
+        find_processes_by_command.return_value = {'/abc': 5, '/def': 6, '/usr/bin/python3 /usr/bin/ghi': 8}
+
+        self.post_context.stopped_processes = [('abc', '/abc'), ('def', '/def'),
+                                               ('ghi', '/usr/bin/python3 /usr/bin/ghi')]
         self.post_context.user_id = 1234
 
         await self.task.run(self.post_context)
 
         getuid.assert_called_once()
         find_processes_by_command.assert_called_once_with({'/abc', '/def', '/usr/bin/python3 /usr/bin/ghi'})
-        _run_user_command.assert_not_called()
-        async_syscall.assert_not_called()
+        run_async_process.assert_not_called()
 
 
 class RestoreMouseCursorTest(IsolatedAsyncioTestCase):
