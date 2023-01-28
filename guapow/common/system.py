@@ -301,8 +301,8 @@ async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env:
 
     """
     args = {"cmd": cmd, "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.STDOUT}
+            "stdout": subprocess.PIPE if output else subprocess.DEVNULL,
+            "stderr": subprocess.STDOUT if output else subprocess.DEVNULL}
 
     if user_id is not None:
         args["preexec_fn"] = lambda: os.setuid(user_id)
@@ -324,8 +324,9 @@ async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env:
         except Exception:
             pass  # do nothing in case the priority could not be changed
 
+    should_wait = wait or (timeout and timeout > 0)
     try:
-        if wait:
+        if should_wait:
             if timeout is None or timeout < 0:
                 return p.pid, await p.wait(), ((await p.stdout.read()).decode() if output else None)
             elif timeout and timeout > 0:
