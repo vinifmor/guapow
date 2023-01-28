@@ -281,19 +281,19 @@ async def find_children(ppids: Set[int], ppid_map: Optional[Dict[int, Set[int]]]
     return children_list
 
 
-async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict],
-                                 forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS,
-                                 wait: bool = True, timeout: Optional[float] = None, output: bool = True,
-                                 exception_output: bool = True) \
+async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env: Optional[dict] = None,
+                            forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS,
+                            wait: bool = True, timeout: Optional[float] = None, output: bool = True,
+                            exception_output: bool = True) \
         -> Tuple[Optional[int], Optional[int], Optional[str]]:
     """
-    Runs a process as a different user (the client code must have permission to do that)
+    Runs a process using the async API
     Args:
         cmd:
-        user_id:
-        user_env:
-        forbidden_env_vars:
-        wait:
+        user_id: if the process should be executed in behalf of a different user
+        custom_env: custom environment variables available for the process to be executed
+        forbidden_env_vars: environment variables that should not be passed to the process
+        wait: if the process should be waited
         timeout: in seconds
         output: if the process output should be read and returned
         exception_output: if the traceback of an unexpected raised exception should be returned as the output
@@ -301,28 +301,32 @@ async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict
 
     """
     args = {"cmd": cmd, "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.STDOUT,
-            "preexec_fn": lambda: os.setuid(user_id)}
+            "stdout": subprocess.PIPE if output else subprocess.DEVNULL,
+            "stderr": subprocess.STDOUT if output else subprocess.DEVNULL}
 
-    if user_env:
+    if user_id is not None:
+        args["preexec_fn"] = lambda: os.setuid(user_id)
+
+    if custom_env:
         if forbidden_env_vars:
-            args['env'] = {k: v for k, v in user_env.items() if k not in forbidden_env_vars}
+            args['env'] = {k: v for k, v in custom_env.items() if k not in forbidden_env_vars}
         else:
-            args['env'] = user_env
+            args['env'] = custom_env
 
     try:
         p = await asyncio.create_subprocess_shell(**args)
     except Exception:
         return None, 1, (traceback.format_exc().replace('\n', ' ') if exception_output else None)
 
-    try:
-        os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
-    except Exception:
-        pass  # do nothing in case the priority could not be changed
+    if user_id is not None:  # set default niceness in case the process is executed in behalf of another user
+        try:
+            os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
+        except Exception:
+            pass  # do nothing in case the priority could not be changed
 
+    should_wait = wait or (timeout and timeout > 0)
     try:
-        if wait:
+        if should_wait:
             if timeout is None or timeout < 0:
                 return p.pid, await p.wait(), ((await p.stdout.read()).decode() if output else None)
             elif timeout and timeout > 0:

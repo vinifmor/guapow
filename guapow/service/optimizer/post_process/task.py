@@ -1,13 +1,12 @@
 import asyncio
 import re
-import traceback
 from abc import ABC, abstractmethod
 from re import Pattern
 from typing import List, Optional, Dict, Set, Tuple, Type, Awaitable
 
 from guapow.common import system
 from guapow.common.scripts import RunScripts
-from guapow.common.system import run_async_user_process
+from guapow.common.system import run_async_process
 from guapow.common.users import is_root_user
 from guapow.service.optimizer.gpu import GPUState, GPUDriver
 from guapow.service.optimizer.post_process.context import PostProcessContext
@@ -273,25 +272,21 @@ class RelaunchStoppedProcesses(PostProcessTask):
     def should_run(self, context: PostProcessContext) -> bool:
         return bool(context.stopped_processes and context.user_id is not None)
 
-    async def _run_command(self, name: str, cmd: str):
-        try:
-            await system.async_syscall(cmd, return_output=False, wait=False)
-            self._log.info(f"Process '{name}' ({cmd}) relaunched")
-        except:
-            stack_log = traceback.format_exc().replace('\n', ' ')
-            self._log.warning(f"An exception happened when relaunching process '{name}' ({cmd}): {stack_log}")
+    async def _run_command(self, name: str, cmd: str, user_id: Optional[int] = None,
+                           user_env: Optional[Dict[str, str]] = None):
+        await run_async_process(cmd=cmd, user_id=user_id, custom_env=user_env, wait=False, output=False,
+                                exception_output=False)
 
-    async def _run_user_command(self, name: str, cmd: str, user_id: int, user_env: Optional[Dict[str, str]] = None):
-        await run_async_user_process(cmd=cmd, user_id=user_id, user_env=user_env, wait=False, output=False,
-                                     exception_output=False)
-        self._log.info(f"Process '{name}' ({cmd}) relaunched (user={user_id})")
+        user_log = f"(user={user_id})" if user_id is not None else ""
+        self._log.info(f"Process '{name}' ({cmd}) relaunched {user_log}")
 
     async def run(self, context: PostProcessContext):
         self_is_root = is_root_user()
         root_request = is_root_user(context.user_id)
 
         if not self_is_root and root_request:
-            self._log.warning(f"It will not be possible to launch the following root processes: {', '.join((c[0] for c in context.stopped_processes))}")
+            self._log.warning(f"It will not be possible to launch the following root processes: "
+                              f"{', '.join((c[0] for c in context.stopped_processes))}")
             return
 
         running_cmds = await system.find_processes_by_command({p[1] for p in context.stopped_processes})
@@ -306,11 +301,8 @@ class RelaunchStoppedProcesses(PostProcessTask):
 
             real_cmd = python_cmd[0] if python_cmd else cmd
 
-            if self_is_root:
-                if root_request:
-                    await self._run_command(name, real_cmd)
-                else:
-                    await self._run_user_command(name, real_cmd, context.user_id, context.user_env)
+            if self_is_root and not root_request:
+                await self._run_command(name, real_cmd, context.user_id, context.user_env)
             else:
                 await self._run_command(name, real_cmd)
 

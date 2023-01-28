@@ -1,14 +1,17 @@
+import asyncio
+import os
 import re
 import subprocess
+from typing import Optional
 from unittest import TestCase
 from unittest.async_case import IsolatedAsyncioTestCase
-from unittest.mock import patch, Mock, AsyncMock, MagicMock
+from unittest.mock import patch, Mock, AsyncMock, MagicMock, PropertyMock
 
 from guapow import __app_name__
 from guapow.common import system
 from guapow.common.system import find_pids_by_names, find_commands_by_pids, find_processes_by_command, \
-    find_process_children, map_processes_by_parent
-from tests import AsyncIterator
+    find_process_children, map_processes_by_parent, run_async_process, ProcessTimedOutError
+from tests import AsyncIterator, AnyInstance
 
 
 class FindProcessByNameTest(IsolatedAsyncioTestCase):
@@ -257,3 +260,110 @@ class FindProcessChildrenTest(TestCase):
                                                             already_found=set(),
                                                             recursive=False)}
         self.assertEqual({(789, "pv-bwrap", 456)}, new_found)
+
+
+class AsyncProcessMock:
+
+    def __init__(self, pid: Optional[int] = None, returncode: Optional[int] = None, output: Optional[str] = None,
+                 wait_time: Optional[float] = None):
+        self.pid = pid
+        self.returncode = returncode
+        self.output = output
+        self.wait_time = wait_time
+        self.stdout = PropertyMock(read=AsyncMock(return_value=self.output.encode() if output else b''))
+
+    async def wait(self) -> int:
+        if self.wait_time and self.wait_time > 0:
+            await asyncio.sleep(self.wait_time)
+
+        return self.returncode
+
+
+class RunAsyncProcessTest(IsolatedAsyncioTestCase):
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    async def test__raise_exception_when_wait_is_false_and_timeout_is_reached(self, *mocks: Mock):
+        create_subprocess_shell = mocks[0]
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888)
+
+        with self.assertRaises(ProcessTimedOutError) as err:
+            await run_async_process(cmd="xpto", wait=False, timeout=0.001)
+            self.assertEqual(888, err.exception.pid)
+
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    async def test__return_output_if_timeout_not_reached_and_returncode_not_none(self, *mocks: Mock):
+        create_subprocess_shell = mocks[0]
+
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888, returncode=0, output="xpto")
+
+        pid, code, output = await run_async_process(cmd="xpto", wait=False, timeout=5)
+        self.assertEqual(888, pid)
+        self.assertEqual(0, code)
+        self.assertEqual("xpto", output)
+
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    async def test__return_output_when_output_true_and_wait_true(self, *mocks: Mock):
+        create_subprocess_shell = mocks[0]
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888, returncode=0, output="xpto")
+
+        pid, returncode, output = await run_async_process(cmd="xpto", output=True, wait=True)
+        self.assertEqual("xpto", output)
+        self.assertEqual(0, returncode)
+        self.assertEqual(888, pid)
+
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    async def test__return_none_as_output_when_output_true_and_wait_false(self, *mocks: Mock):
+        create_subprocess_shell = mocks[0]
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888, returncode=0, output="xpto")
+
+        pid, returncode, output = await run_async_process(cmd="xpto", output=True, wait=False)
+        self.assertIsNone(output)
+        self.assertEqual(0, returncode)
+        self.assertEqual(888, pid)
+
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    async def test__return_output_none_as_output_when_output_false_and_wait_true(self, *mocks: Mock):
+        create_subprocess_shell = mocks[0]
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888, returncode=0, output="xpto")
+
+        pid, returncode, output = await run_async_process(cmd="xpto", output=False, wait=True)
+        self.assertIsNone(output)
+        self.assertEqual(0, returncode)
+        self.assertEqual(888, pid)
+
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    @patch(f"{__app_name__}.common.system.asyncio.create_subprocess_shell")
+    @patch("os.setpriority")
+    @patch("os.setuid")
+    async def test__must_call_setui_when_user_id_is_defined_and_set_priority_to_zero(self, *mocks: Mock):
+        setuid, setpriority, create_subprocess_shell = mocks
+        create_subprocess_shell.return_value = AsyncProcessMock(pid=888, returncode=0, output="xpto")
+
+        custom_env = {"XPTO": 1}
+        pid, returncode, output = await run_async_process(cmd="xpto", user_id=1001, custom_env=custom_env,
+                                                          output=True, wait=True)
+        self.assertEqual("xpto", output)
+        self.assertEqual(0, returncode)
+        self.assertEqual(888, pid)
+
+        setpriority.assert_called_once_with(os.PRIO_PROCESS, 888, 0)
+
+        expected_lambda_type = type(lambda x: x + 1)
+        create_subprocess_shell.assert_called_once_with(cmd="xpto", stdin=subprocess.DEVNULL,
+                                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                                        preexec_fn=AnyInstance(expected_lambda_type),
+                                                        env=custom_env)
