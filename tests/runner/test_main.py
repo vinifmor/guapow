@@ -1,8 +1,7 @@
 import os
 from logging import Logger
-from subprocess import DEVNULL
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import patch, Mock, call, PropertyMock
+from unittest.mock import patch, Mock, call
 
 from guapow import __app_name__
 from guapow.common.config import OptimizerConfig
@@ -68,14 +67,12 @@ class LaunchProcessTest(IsolatedAsyncioTestCase):
     @patch(f'{__app_name__}.runner.profile.get_profile_dir', return_value=RESOURCES_DIR)
     @patch(f'{__app_name__}.runner.main.Popen')
     @patch(f'{__app_name__}.common.network.send')
-    @patch(f'{__app_name__}.common.scripts.asyncio.create_subprocess_shell', side_effect=[PropertyMock(pid=444), PropertyMock(pid=555)])
+    @patch(f'{__app_name__}.common.scripts.run_async_process', side_effect=[(444, 0, None), (555, 0, None)])
     @patch(f'{__app_name__}.runner.main.read_optimizer_config', return_value=OptimizerConfig.default())
     @patch(f'{__app_name__}.runner.main.read_machine_id', return_value='123')
-    async def test__process_must_run_scripts_before_the_process(self, read_machine_id: Mock, read_opt_config: Mock, create_subprocess_shell: Mock,
-                                                                network_send: Mock, main_popen: Mock,
-                                                                get_profile_dir: Mock, getuid: Mock,
-                                                                getuser: Mock, is_log_enabled: Mock,
-                                                                time_mock: Mock, sys_mock: Mock):
+    async def test__process_must_run_scripts_before_the_process(self, *mocks: Mock):
+        read_machine_id, read_opt_config, run_async_process, network_send, main_popen = mocks[0:5]
+        get_profile_dir, getuid, getuser, is_log_enabled, time_mock, sys_mock = mocks[5:]
 
         sys_mock.argv = ['', 'test', 'cmd']
         main_popen.return_value.pid = 123
@@ -90,9 +87,10 @@ class LaunchProcessTest(IsolatedAsyncioTestCase):
         getuid.assert_called()
         time_mock.assert_called()
 
-        create_subprocess_shell.assert_has_calls([
-            call(cmd='/xpto', stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL, env=RunScripts.get_environ()),
-            call(cmd='/abc', stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL, env=RunScripts.get_environ())
+        expected_env = RunScripts.get_environ()
+        run_async_process.assert_has_calls([
+            call(cmd='/xpto', user_id=None, custom_env=expected_env, wait=False, timeout=None, output=False),
+            call(cmd='/abc', user_id=None, custom_env=expected_env, wait=False, timeout=None, output=False)
         ])
 
         main_popen.assert_called_once_with(['test', 'cmd'], **{})
@@ -101,7 +99,8 @@ class LaunchProcessTest(IsolatedAsyncioTestCase):
 
         exp_req = OptimizationRequest(profile=profile, pid=123, command='test cmd', user_env=dict(os.environ),
                                       user_name='test', created_at=1263876386, related_pids={444, 555})
-        network_send.assert_called_once_with(request=exp_req, opt_config=AnyInstance(OptimizerConfig), machine_id='123', logger=AnyInstance(Logger))
+        network_send.assert_called_once_with(request=exp_req, opt_config=AnyInstance(OptimizerConfig),
+                                             machine_id='123', logger=AnyInstance(Logger))
 
     @patch(f'{__app_name__}.runner.main.sys')
     @patch('time.time', return_value=1263876386)

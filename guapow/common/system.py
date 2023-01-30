@@ -2,14 +2,19 @@ import asyncio
 import os
 import subprocess
 import traceback
+from datetime import datetime, timedelta
 from io import StringIO
-from multiprocessing import Manager, Process
-from multiprocessing.managers import DictProxy
 from re import Pattern
 from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collection, Generator
 
 BAD_USER_ENV_VARS = {'LD_PRELOAD'}
 T = TypeVar('T')
+
+
+class ProcessTimedOutError(Exception):
+    def __init__(self, pid: int):
+        super(ProcessTimedOutError, self).__init__()
+        self.pid = pid
 
 
 def syscall(cmd: str, shell: bool = True, cwd: Optional[str] = None, custom_env: Optional[dict] = None, stdin: bool = False, return_output: bool = True) -> Tuple[int, Optional[str]]:
@@ -276,72 +281,70 @@ async def find_children(ppids: Set[int], ppid_map: Optional[Dict[int, Set[int]]]
     return children_list
 
 
-def run_user_command(cmd: str, user_id: int, wait: bool, timeout: Optional[float] = None,
-                     env: Optional[dict] = None, response: Optional[DictProxy] = None, forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS):
-    args = {"args": cmd, "shell": True, "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.PIPE if wait else subprocess.DEVNULL,
-            "stderr": subprocess.STDOUT if wait else subprocess.DEVNULL}
+async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env: Optional[dict] = None,
+                            forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS,
+                            wait: bool = True, timeout: Optional[float] = None, output: bool = True,
+                            exception_output: bool = True) \
+        -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """
+    Runs a process using the async API
+    Args:
+        cmd:
+        user_id: if the process should be executed in behalf of a different user
+        custom_env: custom environment variables available for the process to be executed
+        forbidden_env_vars: environment variables that should not be passed to the process
+        wait: if the process should be waited
+        timeout: in seconds
+        output: if the process output should be read and returned
+        exception_output: if the traceback of an unexpected raised exception should be returned as the output
+    Returns: a tuple containing the process id, exitcode and output as a String
 
-    if env:
+    """
+    args = {"cmd": cmd, "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE if output else subprocess.DEVNULL,
+            "stderr": subprocess.STDOUT if output else subprocess.DEVNULL}
+
+    if user_id is not None:
+        args["preexec_fn"] = lambda: os.setuid(user_id)
+
+    if custom_env:
         if forbidden_env_vars:
-            args['env'] = {k: v for k, v in env.items() if k not in forbidden_env_vars}
+            args['env'] = {k: v for k, v in custom_env.items() if k not in forbidden_env_vars}
         else:
-            args['env'] = env
+            args['env'] = custom_env
 
     try:
-        os.setpriority(os.PRIO_PROCESS, os.getpid(), 0)  # always launch a command with nice 0
-        os.setuid(user_id)
+        p = await asyncio.create_subprocess_shell(**args)
+    except Exception:
+        return None, 1, (traceback.format_exc().replace('\n', ' ') if exception_output else None)
 
-        p = subprocess.Popen(**args)
+    if user_id is not None:  # set default niceness in case the process is executed in behalf of another user
+        try:
+            os.setpriority(os.PRIO_PROCESS, p.pid, 0)  # always launch a command with nice 0
+        except Exception:
+            pass  # do nothing in case the priority could not be changed
 
-        if response is not None:
-            response['pid'] = p.pid
-
-        if timeout is not None and timeout > 0:
-            p.wait(timeout)
-        elif wait:
-            p.wait()
-
-        if response is not None:
-            response['exitcode'] = p.returncode
-
-            string = StringIO()
-            for output in p.stdout:
-                decoded = output.decode()
-                string.write(decoded)
-
-            string.seek(0)
-            response['output'] = string.read()
-
-    except Exception as e:
-        if response is not None:
-            response['exitcode'] = 1
-            response['output'] = traceback.format_exc()
-
-
-async def run_async_user_process(cmd: str, user_id: int, user_env: Optional[dict], forbidden_env_vars: Optional[Set[str]] = BAD_USER_ENV_VARS) -> Tuple[int, Optional[str]]:
-    res = new_user_process_response()
-
+    should_wait = wait or (timeout and timeout > 0)
     try:
-        p = Process(target=run_user_command, kwargs={'cmd': cmd, 'user_id': user_id, 'wait': True, 'timeout': None, 'env': user_env,
-                                                     'response': res, 'forbidden_env_vars': forbidden_env_vars})
-        p.start()
+        if should_wait:
+            if timeout is None or timeout < 0:
+                return p.pid, await p.wait(), ((await p.stdout.read()).decode() if output else None)
+            elif timeout and timeout > 0:
+                timeout_at = datetime.now() + timedelta(seconds=timeout)
 
-        while p.is_alive():
-            await asyncio.sleep(0.001)
+                while datetime.now() < timeout_at:
+                    if p.returncode is not None:
+                        return p.pid, p.returncode, ((await p.stdout.read()).decode() if output else None)
 
-        return res['exitcode'], res['output']
-    except:
-        error_msg = traceback.format_exc().replace('\n', ' ')
-        return 1, error_msg
+                    await asyncio.sleep(0.0005)
 
+                raise ProcessTimedOutError(p.pid)
 
-def new_user_process_response() -> DictProxy:
-    proxy_res = Manager().dict()
-    proxy_res['exitcode'] = None
-    proxy_res['output'] = None
-    proxy_res['pid'] = None
-    return proxy_res
+        return p.pid, p.returncode, None
+    except ProcessTimedOutError:
+        raise
+    except Exception:
+        return p.pid, 1, (traceback.format_exc().replace('\n', ' ') if exception_output else None)
 
 
 async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:

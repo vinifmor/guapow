@@ -7,7 +7,7 @@ from shutil import which
 from typing import Optional, Dict, Set, Tuple
 
 from guapow.common import system
-from guapow.common.system import run_async_user_process
+from guapow.common.system import run_async_process
 
 RE_COMPOSITOR_NAME = re.compile(r'compositor\s*:\s*(.+)\s')
 
@@ -68,7 +68,7 @@ class WindowCompositorWithCLI(WindowCompositor):
         return True, None
 
     async def enable(self, user_id: Optional[int], user_env: Optional[dict], context: dict) -> bool:
-        code, output = await system.run_async_user_process(self._enable_cmd, user_id, user_env)
+        _, code, output = await system.run_async_process(self._enable_cmd, user_id, user_env)
 
         if code == 0:
             return True
@@ -78,7 +78,7 @@ class WindowCompositorWithCLI(WindowCompositor):
             return False
 
     async def disable(self, user_id: Optional[int], user_env: Optional[dict], context: dict) -> bool:
-        code, output = await system.run_async_user_process(self._disable_cmd, user_id, user_env)
+        _, code, output = await system.run_async_process(self._disable_cmd, user_id, user_env)
 
         if code == 0:
             return True
@@ -88,7 +88,7 @@ class WindowCompositorWithCLI(WindowCompositor):
             return False
 
     async def is_enabled(self, user_id: Optional[int], user_env: Optional[dict], context: dict) -> Optional[bool]:
-        exitcode, output = await system.run_async_user_process(self._is_enable_cmd, user_id, user_env)
+        _, exitcode, output = await system.run_async_process(self._is_enable_cmd, user_id, user_env)
 
         if exitcode == 0:
             if not output:
@@ -213,13 +213,14 @@ class WindowCompositorNoCLI(WindowCompositor):
             self._log.error(f"Enable command not available on context for compositor '{self.get_name()}'")
             return False
 
-        code, output = await system.run_async_user_process(cmd=enable_cmd, user_id=user_id, user_env=user_env)
+        _, code, output = await system.run_async_process(cmd=enable_cmd, user_id=user_id, custom_env=user_env)
 
         if code == 0:
             return True
 
         error_log = output.replace('\n', ' ') if output else ''
-        self._log.error(f"Could not start window compositor '{self.get_name()}'. Command '{enable_cmd}' failed. Output: {error_log}")
+        self._log.error(f"Could not start window compositor '{self.get_name()}'. "
+                        f"Command '{enable_cmd}' failed. Output: {error_log}")
         return False
 
     async def disable(self, user_id: Optional[int], user_env: Optional[dict], context: dict) -> bool:
@@ -375,7 +376,7 @@ class NvidiaCompositor(WindowCompositor):
 async def inxi_read_compositor(user_id: int, user_env: Optional[dict], logger: Logger) -> Optional[str]:
     if which('inxi'):
         cmd = 'inxi -Gxx -c 0'
-        code, output = await run_async_user_process(cmd=cmd, user_id=user_id, user_env=user_env)
+        _, code, output = await run_async_process(cmd=cmd, user_id=user_id, custom_env=user_env)
 
         if code == 0:
             name = RE_COMPOSITOR_NAME.findall(output)
