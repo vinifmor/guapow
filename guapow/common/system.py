@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import subprocess
 import traceback
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from typing import Optional, Tuple, Dict, List, Set, Callable, TypeVar, Collecti
 
 BAD_USER_ENV_VARS = {'LD_PRELOAD'}
 T = TypeVar('T')
+RE_SEVERAL_SPACES = re.compile(r'\s+')
 
 
 class ProcessTimedOutError(Exception):
@@ -124,7 +126,7 @@ async def find_process_by_name(name_pattern: Pattern, last_match: bool = False) 
         line_strip = line.strip()
 
         if line_strip:
-            line_split = line_strip.split('#', 1)
+            line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
             if len(line_split) > 1:
                 name = line_split[1].strip()
@@ -134,7 +136,7 @@ async def find_process_by_name(name_pattern: Pattern, last_match: bool = False) 
                     except ValueError:
                         return
 
-    return await match_syscall(cmd=f'ps -Ao "%p#%c" -ww --no-headers --sort={"-" if last_match else ""}pid',
+    return await match_syscall(cmd=f'ps -Ao "%p %c" -ww --no-headers --sort={"-" if last_match else ""}pid',
                                match=_match)
 
 
@@ -143,7 +145,7 @@ async def find_process_by_command(patterns: Set[Pattern], last_match: bool = Fal
         line_strip = line.strip()
 
         if line_strip:
-            line_split = line_strip.split('#', 1)
+            line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
             if len(line_split) > 1:
                 for p in patterns:
@@ -154,7 +156,7 @@ async def find_process_by_command(patterns: Set[Pattern], last_match: bool = Fal
                         except ValueError:
                             break
 
-    return await match_syscall(cmd=f'ps -Ao "%p#%a" -ww --no-headers --sort={"-" if last_match else ""}pid',
+    return await match_syscall(cmd=f'ps -Ao "%p %a" -ww --no-headers --sort={"-" if last_match else ""}pid',
                                match=_match)
 
 
@@ -165,7 +167,7 @@ async def find_processes_by_command(commands: Set[str], last_match: bool = False
         line_strip = line.strip()
 
         if line_strip:
-            line_split = line_strip.split('#', 1)
+            line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
             if len(line_split) > 1:
                 cmd = line_split[1].strip()
@@ -178,7 +180,7 @@ async def find_processes_by_command(commands: Set[str], last_match: bool = False
             if len(matches) == len(commands):
                 return matches
 
-    await match_syscall(cmd=f'ps -Ao "%p#%a" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
+    await match_syscall(cmd=f'ps -Ao "%p %a" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
     return matches if matches else None
 
 
@@ -189,7 +191,7 @@ async def find_pids_by_names(names: Collection[str], last_match: bool = False) -
         line_strip = line.strip()
 
         if line_strip:
-            line_split = line_strip.split('#', 1)
+            line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
             if len(line_split) > 1:
                 current_name = line_split[1].strip()
@@ -203,7 +205,7 @@ async def find_pids_by_names(names: Collection[str], last_match: bool = False) -
         if len(matches) == len(names):
             return matches
 
-    await match_syscall(cmd=f'ps -Ao "%p#%c" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
+    await match_syscall(cmd=f'ps -Ao "%p %c" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
     return matches if matches else None
 
 
@@ -215,7 +217,7 @@ async def find_commands_by_pids(pids: Set[int]) -> Optional[Dict[int, str]]:
             line_strip = line.strip()
 
             if line_strip:
-                line_split = line_strip.split('#', 1)
+                line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
                 if len(line_split) > 1:
                     try:
@@ -229,7 +231,7 @@ async def find_commands_by_pids(pids: Set[int]) -> Optional[Dict[int, str]]:
             if len(matches) == len(pids):
                 return matches
 
-        await match_syscall(cmd='ps -Ao "%p#%a" -ww --no-headers', match=_match)
+        await match_syscall(cmd='ps -Ao "%p %a" -ww --no-headers', match=_match)
         return matches if matches else None
 
 
@@ -238,7 +240,7 @@ def read_current_pids() -> Set[int]:
 
 
 async def map_pids_by_ppid() -> Optional[Dict[int, Set[int]]]:
-    code, output = await async_syscall('ps -Ao "%P#%p" -ww --no-headers')
+    code, output = await async_syscall('ps -Ao "%P %p" -ww --no-headers')
 
     if code == 0 and output:
         all_procs = {}
@@ -247,7 +249,7 @@ async def map_pids_by_ppid() -> Optional[Dict[int, Set[int]]]:
                 line_strip = line.strip()
 
                 if line_strip:
-                    line_split = line_strip.split('#', 1)
+                    line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
                     if len(line_split) == 2:
                         try:
@@ -348,7 +350,7 @@ async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env:
 
 
 async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:
-    exitcode, output = await async_syscall(f'ps -Ao "%P#%p#%c" -ww --no-headers')
+    exitcode, output = await async_syscall(f'ps -Ao "%P %p %c" -ww --no-headers')
 
     if exitcode == 0 and output:
         proc_tree = dict()
@@ -357,7 +359,7 @@ async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:
             line_strip = line.strip()
 
             if line_strip:
-                line_split = line_strip.split('#', 2)
+                line_split = RE_SEVERAL_SPACES.split(line_strip, 2)
 
                 if len(line_split) > 2:
                     ppid, pid, comm, = (e.strip() for e in line_split)
