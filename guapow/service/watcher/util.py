@@ -1,18 +1,18 @@
 import asyncio
 from typing import Dict, Tuple
 
-from guapow.common.system import async_syscall
+from guapow.common.system import async_syscall, RE_SEVERAL_SPACES
 
 
 async def _map_processes_by_attribute(attr: str) -> Dict[int, str]:
-    code, output = await async_syscall(f'ps -Ao "%p %{attr}" -ww --no-headers')
+    code, output = await async_syscall(f'ps -Ao pid,{attr} -ww --no-headers')
 
     if code == 0:
         procs = {}
         for line in output.split('\n'):
             line_strip = line.strip()
             if line_strip:
-                line_split = line_strip.split(" ", 1)
+                line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
                 if len(line_split) > 1:
                     try:
@@ -24,7 +24,7 @@ async def _map_processes_by_attribute(attr: str) -> Dict[int, str]:
 
 
 async def map_processes() -> Dict[int, Tuple[str, str]]:
-    pid_comm, pid_cmd = await asyncio.gather(_map_processes_by_attribute('c'), _map_processes_by_attribute('a'))
+    pid_comm, pid_cmd = await asyncio.gather(_map_processes_by_attribute("comm"), _map_processes_by_attribute("args"))
 
     if pid_comm and pid_cmd:
         res = {}

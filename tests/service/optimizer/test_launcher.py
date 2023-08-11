@@ -124,7 +124,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -145,7 +145,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual({456, 1011}, mapped_pids)
 
@@ -167,7 +167,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_has_calls([call(fpath, self.logger) for fpath in exp_file_paths])
-        async_syscall.assert_awaited_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -189,7 +189,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
         mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once_with(f'/etc/{__app_name__}/launchers', self.logger)
-        async_syscall.assert_awaited_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual(mapped_pids, await map_pids())
 
@@ -209,7 +209,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         mapped_pids = await map_pids()
         map_launchers.assert_awaited_once()
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %a" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,args -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -231,7 +231,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -252,7 +252,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
         mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once()
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %a" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,args -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -274,7 +274,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
         mapped_pids = await map_pids()
 
         map_launchers.assert_awaited_once()
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,comm -ww --no-headers')
 
         self.assertEqual({456}, mapped_pids)
 
@@ -291,7 +291,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         mapped_pids = await map_pids()
 
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %a" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,args -ww --no-headers')
         self.assertEqual({456}, mapped_pids)
 
     @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
@@ -308,7 +308,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         mapped_pids = await map_pids()
 
-        async_syscall.assert_awaited_once_with('ps -Ao "%p %a" -ww --no-headers')
+        async_syscall.assert_awaited_once_with('ps -Ao pid,args -ww --no-headers')
         self.assertEqual({456}, mapped_pids)
 
     @patch(f'{__app_name__}.service.optimizer.launcher.async_syscall')
@@ -366,7 +366,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        async_syscall.assert_awaited_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with('ps -Ao pid,comm -ww --no-headers')
         self.assertGreaterEqual(async_syscall.await_count, 2)
 
         self.assertEqual({456, 1011}, mapped_pids)
@@ -395,7 +395,7 @@ class ExplicitLauncherMapperTest(IsolatedAsyncioTestCase):
 
         exp_file_paths = [*gen_possible_launchers_file_paths(user_id=123, user_name='user')]
         map_launchers.assert_awaited_once_with(exp_file_paths[0], self.logger)
-        async_syscall.assert_awaited_with('ps -Ao "%p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with('ps -Ao pid,comm -ww --no-headers')
         self.assertEqual(1, async_syscall.await_count)
 
         self.assertEqual({456}, mapped_pids)
@@ -424,7 +424,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({2602, 2603}, mapped_pids)
 
@@ -450,7 +450,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({13786, 13787}, mapped_pids)
 
@@ -472,7 +472,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661, 5662}, mapped_pids)
 
@@ -508,7 +508,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 2)
         self.assertEqual({1213, 1214}, mapped_pids)
 
@@ -552,7 +552,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
@@ -580,7 +580,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
@@ -605,7 +605,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
@@ -632,7 +632,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
@@ -659,7 +659,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({5661}, mapped_pids)
 
@@ -685,7 +685,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({1213, 1214}, mapped_pids)
 
@@ -709,7 +709,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual(set(), mapped_pids)
 
@@ -734,7 +734,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertEqual(1, async_syscall.await_count)
         self.assertEqual({2602}, mapped_pids)
 
@@ -756,7 +756,7 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
             return {pid async for pid in self.mapper.map_pids(request, profile)}
 
         mapped_pids = await map_pids()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertGreaterEqual(async_syscall.await_count, 1)
         self.assertEqual({2602}, mapped_pids)
 

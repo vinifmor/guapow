@@ -22,7 +22,7 @@ class FindProcessByNameTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(123, proc_found[0])
         self.assertEqual('abc', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %c" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,comm -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', side_effect=[
         MagicMock(stdout=AsyncIterator([b'456 xpto', b'123 abc'])),
@@ -46,7 +46,7 @@ class FindProcessByNameTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(123, proc_found[0])
         self.assertEqual('ac', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %c" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,comm -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b'456 ab', b'123 ac'])))
     async def test__return_last_match_when_last_match_is_true(self, create_subprocess_shell: AsyncMock):
@@ -54,7 +54,7 @@ class FindProcessByNameTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(456, proc_found[0])
         self.assertEqual('ab', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %c" -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,comm -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
 
 class FindProcessByCommandTest(IsolatedAsyncioTestCase):
@@ -65,7 +65,7 @@ class FindProcessByCommandTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(123, proc_found[0])
         self.assertEqual('/opt/abc', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b' 456 /bin/xpto ', b' 123 /opt/abc '])))
     async def test__match_for_one_of_the_specified_patterns(self, create_subprocess_shell: AsyncMock):
@@ -98,7 +98,7 @@ class FindProcessByCommandTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(456, proc_found[0])
         self.assertEqual('/bin/x', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b'123 /bin/a', b'456 /bin/x'])))
     async def test__return_first_match_when_last_match_is_false(self, create_subprocess_shell: AsyncMock):
@@ -106,7 +106,7 @@ class FindProcessByCommandTest(IsolatedAsyncioTestCase):
         self.assertIsNotNone(proc_found)
         self.assertEqual(123, proc_found[0])
         self.assertEqual('/bin/a', proc_found[1])
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
 
 class FindChildrenTest(IsolatedAsyncioTestCase):
@@ -116,7 +116,7 @@ class FindChildrenTest(IsolatedAsyncioTestCase):
         children = await system.find_children({123, 456})
         self.assertEqual([], children)
 
-        async_syscall.assert_called_once_with('ps -Ao "%P %p" -ww --no-headers')
+        async_syscall.assert_called_once_with('ps -Ao ppid,pid -ww --no-headers')
 
     @patch(f'{__app_name__}.common.system.async_syscall')
     async def test__children_sorted_by_the_deepest_on_the_tree(self, async_syscall: Mock):
@@ -132,7 +132,7 @@ class FindChildrenTest(IsolatedAsyncioTestCase):
         '''
         async_syscall.return_value = (0, pid_tree)
         children = await system.find_children({1, 2})
-        async_syscall.assert_called_once_with('ps -Ao "%P %p" -ww --no-headers')
+        async_syscall.assert_called_once_with('ps -Ao ppid,pid -ww --no-headers')
         self.assertIsNotNone(children)
         self.assertEqual(8, len(children))
         self.assertEqual(444, children[0])
@@ -148,7 +148,7 @@ class FindPidsByNameTest(IsolatedAsyncioTestCase):
 
         self.assertEqual({'a': 1, 'b': 2, 'c': 5}, res)
 
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %c" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,comm -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b'5  c', b'4  b', b'3  a', b'2 b', b'1 a'])))
     async def test__must_return_the_last_match_when_last_match_is_true(self, create_subprocess_shell: AsyncMock):
@@ -156,7 +156,7 @@ class FindPidsByNameTest(IsolatedAsyncioTestCase):
 
         self.assertEqual({'a': 3, 'b': 4, 'c': 5}, res)
 
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %c" -ww --no-headers --sort=-pid',
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,comm -ww --no-headers --sort=-pid',
                                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                                          stdin=subprocess.DEVNULL)
 
@@ -168,7 +168,7 @@ class FindCommandsByPidsTest(IsolatedAsyncioTestCase):
         res = await find_commands_by_pids({2, 4, 7})
         self.assertEqual({2: '/bin/b', 4: '/bin/d -xpto'}, res)
 
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers',
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers',
                                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                                          stdin=subprocess.DEVNULL)
 
@@ -179,19 +179,19 @@ class FindProcessesByCommandTest(IsolatedAsyncioTestCase):
     async def test__must_return_first_matches_when_parameter_not_defined(self, create_subprocess_shell: AsyncMock):
         res = await find_processes_by_command({'/bin/a', '/bin/b', '/bin/d'})
         self.assertEqual({'/bin/a': 1, '/bin/b': 2, '/bin/d': 6}, res)
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b' 1 /bin/a ', b' 2 /bin/b ', b' 3 /bin/a ', b' 4  /bin/c', b' 5  /bin/b ', b' 6  /bin/d'])))
     async def test__must_return_first_matches_when_parameter_set_to_false(self, create_subprocess_shell: AsyncMock):
         res = await find_processes_by_command({'/bin/a', '/bin/b', '/bin/d'}, last_match=False)
         self.assertEqual({'/bin/a': 1, '/bin/b': 2, '/bin/d': 6}, res)
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
     @patch(f'{__app_name__}.common.system.asyncio.create_subprocess_shell', return_value=MagicMock(stdout=AsyncIterator([b' 6  /bin/d', b' 5  /bin/b ',  b' 4  /bin/c', b' 3  /bin/a ', b' 2  /bin/b ',  b' 1  /bin/a '])))
     async def test__must_return_last_matches_when_parameter_set_to_true(self, create_subprocess_shell: AsyncMock):
         res = await find_processes_by_command({'/bin/a', '/bin/b', '/bin/d'}, last_match=True)
         self.assertEqual({'/bin/a': 3, '/bin/b': 5, '/bin/d': 6}, res)
-        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao "%p %a" -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        create_subprocess_shell.assert_awaited_once_with(cmd='ps -Ao pid,args -ww --no-headers --sort=-pid', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 
 
 class MapProcessByParentTest(IsolatedAsyncioTestCase):
@@ -209,7 +209,7 @@ class MapProcessByParentTest(IsolatedAsyncioTestCase):
         """)
 
         proc_map = await map_processes_by_parent()
-        async_syscall.assert_awaited_with(f'ps -Ao "%P %p %c" -ww --no-headers')
+        async_syscall.assert_awaited_with("ps -Ao ppid,pid,comm -ww --no-headers")
         self.assertEqual(4, len(proc_map))
 
         expected = {1411: {(5202, "reaper")},

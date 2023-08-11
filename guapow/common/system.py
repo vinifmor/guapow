@@ -136,7 +136,7 @@ async def find_process_by_name(name_pattern: Pattern, last_match: bool = False) 
                     except ValueError:
                         return
 
-    return await match_syscall(cmd=f'ps -Ao "%p %c" -ww --no-headers --sort={"-" if last_match else ""}pid',
+    return await match_syscall(cmd=f'ps -Ao pid,comm -ww --no-headers --sort={"-" if last_match else ""}pid',
                                match=_match)
 
 
@@ -156,7 +156,7 @@ async def find_process_by_command(patterns: Set[Pattern], last_match: bool = Fal
                         except ValueError:
                             break
 
-    return await match_syscall(cmd=f'ps -Ao "%p %a" -ww --no-headers --sort={"-" if last_match else ""}pid',
+    return await match_syscall(cmd=f'ps -Ao pid,args -ww --no-headers --sort={"-" if last_match else ""}pid',
                                match=_match)
 
 
@@ -180,7 +180,7 @@ async def find_processes_by_command(commands: Set[str], last_match: bool = False
             if len(matches) == len(commands):
                 return matches
 
-    await match_syscall(cmd=f'ps -Ao "%p %a" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
+    await match_syscall(cmd=f'ps -Ao pid,args -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
     return matches if matches else None
 
 
@@ -205,7 +205,7 @@ async def find_pids_by_names(names: Collection[str], last_match: bool = False) -
         if len(matches) == len(names):
             return matches
 
-    await match_syscall(cmd=f'ps -Ao "%p %c" -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
+    await match_syscall(cmd=f'ps -Ao pid,comm -ww --no-headers --sort={"-" if last_match else ""}pid', match=_match)
     return matches if matches else None
 
 
@@ -231,7 +231,7 @@ async def find_commands_by_pids(pids: Set[int]) -> Optional[Dict[int, str]]:
             if len(matches) == len(pids):
                 return matches
 
-        await match_syscall(cmd='ps -Ao "%p %a" -ww --no-headers', match=_match)
+        await match_syscall(cmd='ps -Ao pid,args -ww --no-headers', match=_match)
         return matches if matches else None
 
 
@@ -240,7 +240,7 @@ def read_current_pids() -> Set[int]:
 
 
 async def map_pids_by_ppid() -> Optional[Dict[int, Set[int]]]:
-    code, output = await async_syscall('ps -Ao "%P %p" -ww --no-headers')
+    code, output = await async_syscall('ps -Ao ppid,pid -ww --no-headers')
 
     if code == 0 and output:
         all_procs = {}
@@ -350,7 +350,7 @@ async def run_async_process(cmd: str, user_id: Optional[int] = None, custom_env:
 
 
 async def map_processes_by_parent() -> Dict[int, Set[Tuple[int, str]]]:
-    exitcode, output = await async_syscall(f'ps -Ao "%P %p %c" -ww --no-headers')
+    exitcode, output = await async_syscall(f'ps -Ao ppid,pid,comm -ww --no-headers')
 
     if exitcode == 0 and output:
         proc_tree = dict()

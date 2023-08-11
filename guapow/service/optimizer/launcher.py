@@ -129,8 +129,8 @@ class ExplicitLauncherMapper(LauncherMapper):
     @staticmethod
     async def map_process_by_pid(mode: LauncherSearchMode, ignore: Set[int]) -> Optional[Dict[int, str]]:
         if mode:
-            mode_str = "a" if mode == LauncherSearchMode.COMMAND else "c"
-            exitcode, output = await async_syscall(f'ps -Ao "%p %{mode_str}" -ww --no-headers')
+            mode_str = "args" if mode == LauncherSearchMode.COMMAND else "comm"
+            exitcode, output = await async_syscall(f'ps -Ao pid,{mode_str} -ww --no-headers')
 
             if exitcode == 0 and output:
                 pid_comm = dict()
