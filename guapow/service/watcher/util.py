@@ -5,14 +5,14 @@ from guapow.common.system import async_syscall
 
 
 async def _map_processes_by_attribute(attr: str) -> Dict[int, str]:
-    code, output = await async_syscall(f'ps -Ao "%p#%{attr}" -ww --no-headers')
+    code, output = await async_syscall(f'ps -Ao "%p %{attr}" -ww --no-headers')
 
     if code == 0:
         procs = {}
         for line in output.split('\n'):
             line_strip = line.strip()
             if line_strip:
-                line_split = line_strip.split('#', 1)
+                line_split = line_strip.split(" ", 1)
 
                 if len(line_split) > 1:
                     try:
