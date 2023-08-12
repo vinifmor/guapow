@@ -11,7 +11,7 @@ from guapow import __app_name__
 from guapow.common import util
 from guapow.common.dto import OptimizationRequest
 from guapow.common.model import CustomEnum
-from guapow.common.system import async_syscall, map_processes_by_parent, find_process_children
+from guapow.common.system import async_syscall, map_processes_by_parent, find_process_children, RE_SEVERAL_SPACES
 from guapow.common.users import is_root_user
 from guapow.service.optimizer.profile import OptimizationProfile
 
@@ -129,8 +129,8 @@ class ExplicitLauncherMapper(LauncherMapper):
     @staticmethod
     async def map_process_by_pid(mode: LauncherSearchMode, ignore: Set[int]) -> Optional[Dict[int, str]]:
         if mode:
-            mode_str = "a" if mode == LauncherSearchMode.COMMAND else "c"
-            exitcode, output = await async_syscall(f'ps -Ao "%p#%{mode_str}" -ww --no-headers')
+            mode_str = "args" if mode == LauncherSearchMode.COMMAND else "comm"
+            exitcode, output = await async_syscall(f'ps -Ao pid,{mode_str} -ww --no-headers')
 
             if exitcode == 0 and output:
                 pid_comm = dict()
@@ -139,7 +139,7 @@ class ExplicitLauncherMapper(LauncherMapper):
                     line_strip = line.strip()
 
                     if line_strip:
-                        line_split = line_strip.split('#', 1)
+                        line_split = RE_SEVERAL_SPACES.split(line_strip, 1)
 
                         if len(line_split) > 1:
                             try:
@@ -261,13 +261,15 @@ class SteamLauncherMapper(LauncherMapper):
         if self._to_ignore is None:
             self._to_ignore = {"wineserver", "services.exe", "winedevice.exe", "plugplay.exe", "svchost.exe",
                                "explorer.exe", "rpcss.exe", "tabtip.exe", "wine", "wine64", "wineboot.exe",
-                               "cmd.exe", "conhost.exe", "start.exe", "steam-runtime-l", "proton", "gzip",
-                               "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
+                               "cmd.exe", "conhost.exe", "start.exe", "winemenubuilder", "steam-runtime-l", "proton",
+                               "gzip", "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
                                "OriginClientSer", "QtWebEngineProc", "EASteamProxy.ex", "ActivationUI.ex",
-                               "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe",
-                               "ldconfig", "UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe", "UplayService.ex",
-                               "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain", "CrUtilityMain",
-                               "whql:off", "PnkBstrA.exe"}
+                               "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy32.exe", "IGOProxy64.exe",
+                               "igoproxy64.exe", "ldconfig", "UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe",
+                               "UplayService.ex", "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain",
+                               "CrUtilityMain", "whql:off", "PnkBstrA.exe", "EABackgroundSer", "EADesktop.exe",
+                               "EALocalHostSvc.", "EADestager.exe", "EALaunchHelper", "Link2EA.exe",
+                               "ThreadPoolSingl ", "CrBrowserMain", "rundll32.exe", "iexplore.exe", "UnityCrashHandl"}
 
         return self._to_ignore
 

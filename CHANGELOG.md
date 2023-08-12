@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.3.3] 2023-08-12
+
+### Improvements
+- optimizer: ignoring more unneeded EA launcher and Wine child processes
+
+### Fixes
+- watcher/optimizer: not able to map processes alive with `ps` command version >= 4.0.X
+
 ## [1.3.2] 2023-01-30
 ### Improvements
 - replaced some subprocess calls executed in behalf of non-root users by async calls (Python's asyncio native approach)
