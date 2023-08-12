@@ -883,7 +883,8 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
     def test_to_ignore__must_contain_wine_processes(self):
         expected_processes = {"wineserver", "services.exe", "winedevice.exe", "plugplay.exe", "svchost.exe",
                               "explorer.exe", "rpcss.exe", "tabtip.exe", "wine", "wine64", "wineboot.exe",
-                              "cmd.exe", "conhost.exe", "start.exe"}
+                              "cmd.exe", "conhost.exe", "start.exe", "winemenubuilder", "rundll32.exe", "iexplore.exe",
+                              "UnityCrashHandl"}
 
         self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
 
