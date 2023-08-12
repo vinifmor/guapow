@@ -269,7 +269,7 @@ class SteamLauncherMapper(LauncherMapper):
                                "UplayService.ex", "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain",
                                "CrUtilityMain", "whql:off", "PnkBstrA.exe", "EABackgroundSer", "EADesktop.exe",
                                "EALocalHostSvc.", "EADestager.exe", "EALaunchHelper", "Link2EA.exe",
-                               "ThreadPoolSingl ", "CrBrowserMain"}
+                               "ThreadPoolSingl ", "CrBrowserMain", "rundll32.exe", "iexplore.exe", "UnityCrashHandl"}
 
         return self._to_ignore
 
