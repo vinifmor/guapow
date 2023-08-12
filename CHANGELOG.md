@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [NEXT]
 
+### Improvements
+- optimizer: ignoring more unneeded EA launcher child processes
+
 ### Fixes
 - watcher/optimizer: not able to map processes alive with `ps` command version >= 4.0.X
 

@@ -532,10 +532,11 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
         30408    5781 UPlayBrowser.exe
         30408    5782 wine
         30408    5783 wine64
-        30408    5784 proton
-        30408    5785 gzip
-        30408    5786 steam.exe
-        30408    5787 python 
+        30408    5784 winemenubuilder
+        30408    5785 proton
+        30408    5786 gzip
+        30408    5787 steam.exe
+        30408    5788 python 
         30408    5661 Game_x64.exe
     """))
     async def test_map_pids__should_not_yield_ignored_processes(self, async_syscall: AsyncMock):
@@ -873,7 +874,9 @@ class SteamLauncherMapperTest(IsolatedAsyncioTestCase):
     def test_to_ignore__must_contain_ea_origin_processes(self):
         expected_processes = {"OriginWebHelper", "Origin.exe", "OriginClientSer", "QtWebEngineProc",
                               "EASteamProxy.ex", "UPlayBrowser.exe", "ldconfig", "EALink.exe", "OriginLegacyCLI",
-                              "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe", "ActivationUI.ex"}
+                              "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe", "ActivationUI.ex", "IGOProxy32.exe",
+                              "EABackgroundSer", "EADesktop.exe", "EALocalHostSvc.", "EADestager.exe", "EALaunchHelper",
+                              "Link2EA.exe", "ThreadPoolSingl ", "CrBrowserMain"}
 
         self.assertTrue(expected_processes.issubset(self.mapper.to_ignore))
 

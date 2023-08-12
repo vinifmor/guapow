@@ -261,13 +261,15 @@ class SteamLauncherMapper(LauncherMapper):
         if self._to_ignore is None:
             self._to_ignore = {"wineserver", "services.exe", "winedevice.exe", "plugplay.exe", "svchost.exe",
                                "explorer.exe", "rpcss.exe", "tabtip.exe", "wine", "wine64", "wineboot.exe",
-                               "cmd.exe", "conhost.exe", "start.exe", "steam-runtime-l", "proton", "gzip",
-                               "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
+                               "cmd.exe", "conhost.exe", "start.exe", "winemenubuilder", "steam-runtime-l", "proton",
+                               "gzip", "steam.exe", "python", "python3", "OriginWebHelper", "Origin.exe",
                                "OriginClientSer", "QtWebEngineProc", "EASteamProxy.ex", "ActivationUI.ex",
-                               "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy64.exe", "igoproxy64.exe",
-                               "ldconfig", "UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe", "UplayService.ex",
-                               "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain", "CrUtilityMain",
-                               "whql:off", "PnkBstrA.exe"}
+                               "EALink.exe", "OriginLegacyCLI", "IGOProxy.exe", "IGOProxy32.exe", "IGOProxy64.exe",
+                               "igoproxy64.exe", "ldconfig", "UPlayBrowser.exe", "UbisoftGameLaun", "upc.exe",
+                               "UplayService.ex", "UplayWebCore.ex", "CrRendererMain", "regsvr32", "CrGpuMain",
+                               "CrUtilityMain", "whql:off", "PnkBstrA.exe", "EABackgroundSer", "EADesktop.exe",
+                               "EALocalHostSvc.", "EADestager.exe", "EALaunchHelper", "Link2EA.exe",
+                               "ThreadPoolSingl ", "CrBrowserMain"}
 
         return self._to_ignore
 
