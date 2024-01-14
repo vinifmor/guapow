@@ -1,7 +1,7 @@
 import os
 from abc import ABC
 from asyncio import Lock
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 
 from guapow.common.scripts import RunScripts
 from guapow.common.users import is_root_user
@@ -112,6 +112,10 @@ class DisableWindowCompositor(EnvironmentTask):
         self._manageable: Optional[bool] = None
         self._lock = Lock()
 
+    @staticmethod
+    def is_wayland_session(env: Dict[str, str] = os.environ):
+        return env and env.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+
     async def is_available(self) -> Tuple[bool, Optional[str]]:
         return True, None
 
@@ -119,6 +123,10 @@ class DisableWindowCompositor(EnvironmentTask):
         request, profile = process.request, process.profile
 
         if profile.compositor and profile.compositor.off:
+            if self.is_wayland_session(process.request.user_env):
+                self._log.info("wayland session request: compositor will not be disabled")
+                return False
+
             async with self._lock:
                 if not self._context.compositor and not self._compositor_checked:
                     compositor = await get_window_compositor(logger=self._log, user_id=request.user_id, user_env=request.user_env)

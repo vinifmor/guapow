@@ -259,6 +259,7 @@ makepkg -si
  #### <a name="opt_compositor">Disabling window compositor</a>
  - Window compositors are responsible for managing the window/desktop effects, and prevent visual glitches (like screen tearing). They generally come pre-bundled with desktop environments, window managers and distributions.
  - Some applications perform better when the compositor is disabled (e.g: games)
+ - Not supported for wayland sessions
  - Currently supported compositors: 
     - **kwin** (KDE desktop environment)
     - **xfwm4** (XFCE desktop environment)
