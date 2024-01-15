@@ -1,7 +1,7 @@
 include LICENSE CHANGELOG.md README.md requirements.txt
-recursive-exclude launchers
-recursive-exclude guapow.egg-info
-recursive-exclude .pytest_cache
+exclude launchers
+exclude guapow.egg-info
+exclude .pytest_cache
 exclude py_dist.sh
 recursive-include guapow/dist *
 recursive-exclude guapow/dist *.orig
