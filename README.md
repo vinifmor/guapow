@@ -361,7 +361,7 @@ makepkg -si
 - Some applications do not hide the mouse pointer by default, and can spoil the user experience.
 - Property definition: 
     - `mouse.hidden` (equivalents: `mouse.hidden=true` or `mouse.hidden=1`)
-- Requires **unclutter** installed.
+- Requires **unclutter** installed (**it does not support wayland at the moment**)
 - The mouse pointer will be hidden after the target application starts.
 - The **optimizer** service will keep the mouse pointer hidden until the optimized application finishes. It handles the state if two or more optimized applications require `mouse.hidden`. So if application A and B require `mouse.hidden` and A finishes after a while, the pointer will be kept hidden until B finishes.
     

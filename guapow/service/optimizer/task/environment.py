@@ -5,6 +5,7 @@ from typing import Optional, Tuple, List, Dict
 
 from guapow.common.scripts import RunScripts
 from guapow.common.users import is_root_user
+from guapow.common.util import is_wayland_session
 from guapow.runner.profile import RunnerProfile
 from guapow.runner.task import StopProcesses, RunnerContext
 from guapow.service.optimizer import cpu
@@ -112,10 +113,6 @@ class DisableWindowCompositor(EnvironmentTask):
         self._manageable: Optional[bool] = None
         self._lock = Lock()
 
-    @staticmethod
-    def is_wayland_session(env: Dict[str, str] = os.environ):
-        return env and env.get("XDG_SESSION_TYPE", "").lower() == "wayland"
-
     async def is_available(self) -> Tuple[bool, Optional[str]]:
         return True, None
 
@@ -123,7 +120,7 @@ class DisableWindowCompositor(EnvironmentTask):
         request, profile = process.request, process.profile
 
         if profile.compositor and profile.compositor.off:
-            if self.is_wayland_session(process.request.user_env):
+            if is_wayland_session(process.request.user_env):
                 self._log.info("wayland session request: compositor will not be disabled")
                 return False
 
@@ -178,7 +175,12 @@ class HideMouseCursor(EnvironmentTask):
         return self._mouse_man.can_work()
 
     async def should_run(self, process: OptimizedProcess) -> bool:
-        return bool(process.profile.hide_mouse)
+        if bool(process.profile.hide_mouse):
+            if is_wayland_session(process.request.user_env):
+                self._log.info("wayland session request: mouse hidden is not supported")
+                return False
+            return True
+        return False
 
     async def run(self, process: OptimizedProcess):
         await self._mouse_man.hide_cursor(user_request=not process.request.is_self_request, user_env=process.request.user_env)

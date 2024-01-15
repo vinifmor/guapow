@@ -451,7 +451,7 @@ class HideMouseCursorTest(IsolatedAsyncioTestCase):
     def setUp(self):
         self.context = OptimizationContext.empty()
         self.context.mouse_man = Mock()
-        self.context.logger = Mock()
+        self.context.logger = MagicMock()
 
         self.task = HideMouseCursor(self.context)
         self.profile = OptimizationProfile.empty('test')
@@ -469,6 +469,12 @@ class HideMouseCursorTest(IsolatedAsyncioTestCase):
     async def test_should_run__true_when_hide_mouse_is_set_to_true(self):
         self.profile.hide_mouse = True
         self.assertTrue(await self.task.should_run(self.process))
+
+    async def test_should_run__false_when_wayland_session(self):
+        self.profile.hide_mouse = True
+        self.process.request.user_env = {"XDG_SESSION_TYPE": "WaylanD"}
+        self.assertFalse(await self.task.should_run(self.process))
+        self.context.logger.info.assert_called_once_with("wayland session request: mouse hidden is not supported")
 
     async def test_should_run__false_when_hide_mouse_is_not_defined(self):
         self.profile.hide_mouse = None
