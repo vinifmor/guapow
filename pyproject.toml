@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guapow"
+description = "On-demand and auto performance optimizer for Linux applications"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+dynamic = ["version"]
+readme = "README.md"
+authors = [{name = "Vinicius Moreira", email = "vinicius_fmoreira@hotmail.com"}]
+classifiers = [
+        'Topic :: Utilities',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11'
+]
+
+dependencies = [
+    "aiofiles >= 0.7.0",
+    "aiohttp >= 3.7.0",
+    "pycryptodome >= 3.10.1",
+]
+
+[project.scripts]
+guapow = "guapow.runner.main:run"
+guapow-cli = "guapow.cli.main:run"
+guapow-opt = "guapow.service.optimizer.main:start"
+guapow-watch = "guapow.service.watcher.main:start"
+
+[project.urls]
+Repository = "https://github.com/vinifmor/guapow"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
+
+[tool.setuptools.dynamic]
+version = {attr = "guapow.__version__"}
+
+[tool.setuptools.packages.find]
+exclude = ["tests.*", "tests"]
