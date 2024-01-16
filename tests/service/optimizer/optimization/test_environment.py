@@ -284,7 +284,7 @@ class DisableWindowCompositorTest(IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.context = OptimizationContext.empty()
-        self.context.logger = Mock()
+        self.context.logger = MagicMock()
 
         self.request = OptimizationRequest(pid=123, command='abc', profile='user', user_name='user', user_env={})
         self.request.user_id = 1234
@@ -434,6 +434,15 @@ class DisableWindowCompositorTest(IsolatedAsyncioTestCase):
         compositor.is_enabled.assert_called_with(user_id=self.request.user_id, user_env=self.request.user_env, context=expected_context)
         compositor.disable.assert_called_with(user_id=self.request.user_id, user_env=self.request.user_env, context=expected_context)
 
+    @patch(f'{__app_name__}.service.optimizer.task.environment.get_window_compositor', return_value=MagicMock(can_be_managed=MagicMock(return_value=(False, None))))
+    async def test_should_run__false_when_request_from_wayland_session(self, get_window_compositor: Mock):
+        self.request.user_env = {"XDG_SESSION_TYPE": "Wayland"}
+        self.context.compositor = None
+        self.profile.compositor = CompositorSettings(off=True)
+        self.assertFalse(await self.task.should_run(self.process))
+        self.context.logger.info.assert_called_once_with("wayland session request: compositor will not be disabled")
+        get_window_compositor.assert_not_called()
+
 
 class HideMouseCursorTest(IsolatedAsyncioTestCase):
 
@@ -442,7 +451,7 @@ class HideMouseCursorTest(IsolatedAsyncioTestCase):
     def setUp(self):
         self.context = OptimizationContext.empty()
         self.context.mouse_man = Mock()
-        self.context.logger = Mock()
+        self.context.logger = MagicMock()
 
         self.task = HideMouseCursor(self.context)
         self.profile = OptimizationProfile.empty('test')
@@ -460,6 +469,12 @@ class HideMouseCursorTest(IsolatedAsyncioTestCase):
     async def test_should_run__true_when_hide_mouse_is_set_to_true(self):
         self.profile.hide_mouse = True
         self.assertTrue(await self.task.should_run(self.process))
+
+    async def test_should_run__false_when_wayland_session(self):
+        self.profile.hide_mouse = True
+        self.process.request.user_env = {"XDG_SESSION_TYPE": "WaylanD"}
+        self.assertFalse(await self.task.should_run(self.process))
+        self.context.logger.info.assert_called_once_with("wayland session request: mouse hidden is not supported")
 
     async def test_should_run__false_when_hide_mouse_is_not_defined(self):
         self.profile.hide_mouse = None

@@ -11,7 +11,7 @@ class OptimizationRequest:
     def __init__(self, pid: Optional[int], command: Optional[str], user_name: Optional[str], profile: Optional[str] = None,
                  created_at: Optional[float] = time.time(), config: Optional[str] = None,
                  profile_config: Optional[str] = None, related_pids: Optional[Set[int]] = None,
-                 user_env: Optional[dict] = None, stopped_processes: Optional[Dict[str, Optional[str]]] = None,
+                 user_env: Optional[Dict[str, str]] = None, stopped_processes: Optional[Dict[str, Optional[str]]] = None,
                  relaunch_stopped_processes: Optional[bool] = None):
         self.pid = pid
         self.command = command

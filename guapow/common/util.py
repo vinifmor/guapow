@@ -1,6 +1,7 @@
+import os
 import re
 from re import Pattern
-from typing import Optional
+from typing import Optional, Dict
 
 re_any_operator = re.compile(r'\*+')
 
@@ -26,3 +27,6 @@ def strip_file_extension(cmd: str) -> Optional[str]:
     if cmd:
         return '.'.join(cmd.split('.')[0:-1])
 
+
+def is_wayland_session(envvars: Dict[str, str] = os.environ):
+    return envvars and envvars.get("XDG_SESSION_TYPE", "").lower() == "wayland"

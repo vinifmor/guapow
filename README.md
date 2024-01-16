@@ -259,6 +259,7 @@ makepkg -si
  #### <a name="opt_compositor">Disabling window compositor</a>
  - Window compositors are responsible for managing the window/desktop effects, and prevent visual glitches (like screen tearing). They generally come pre-bundled with desktop environments, window managers and distributions.
  - Some applications perform better when the compositor is disabled (e.g: games)
+ - Not supported for wayland sessions
  - Currently supported compositors: 
     - **kwin** (KDE desktop environment)
     - **xfwm4** (XFCE desktop environment)
@@ -360,7 +361,7 @@ makepkg -si
 - Some applications do not hide the mouse pointer by default, and can spoil the user experience.
 - Property definition: 
     - `mouse.hidden` (equivalents: `mouse.hidden=true` or `mouse.hidden=1`)
-- Requires **unclutter** installed.
+- Requires **unclutter** installed (**it does not support wayland at the moment**)
 - The mouse pointer will be hidden after the target application starts.
 - The **optimizer** service will keep the mouse pointer hidden until the optimized application finishes. It handles the state if two or more optimized applications require `mouse.hidden`. So if application A and B require `mouse.hidden` and A finishes after a while, the pointer will be kept hidden until B finishes.
     
