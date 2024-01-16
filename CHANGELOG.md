@@ -4,10 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [NEXT]
+## [1.3.4] 2024-01-16
 ### Improvements
-- do not try to disable window compositors when `compositor.off` if requested for wayland sessions
-- do not try to hide the mouse pointer when `mouse.hidden` is requested for wayland sessions (`unclutter` does not support wayland at the moment)
+- do not try to disable window compositors when `compositor.off` if requested from a wayland session
+- do not try to hide the mouse pointer when `mouse.hidden` is requested from a wayland session (`unclutter` does not support wayland at the moment)
 - adding a new project definition/setup (`pyproject.toml`) file to comply with the latest standards
 
 ## [1.3.3] 2023-08-12
