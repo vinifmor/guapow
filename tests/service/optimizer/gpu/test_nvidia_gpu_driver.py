@@ -9,7 +9,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.shutil.which', return_value='')
     def test_can_work__false_when_nvidia_settings_is_not_installed(self, which: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         can_work, msg = driver.can_work()
         self.assertEqual(False, can_work)
         self.assertIsInstance(msg, str)
@@ -17,7 +17,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.shutil.which', side_effect=['nvidia-settings', ''])
     def test_can_work__false_when_nvidia_smi_is_not_installed(self, which: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         can_work, msg = driver.can_work()
         self.assertEqual(False, can_work)
         self.assertIsInstance(msg, str)
@@ -25,41 +25,41 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.shutil.which', side_effect=['nvidia-settings', 'nvidia-smi'])
     def test_can_work__true_when_nvidia_settings_and_smi_are_not_installed(self, which: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         can_work, msg = driver.can_work()
         self.assertEqual(True, can_work)
         self.assertIsNone(msg)
         which.assert_has_calls([call('nvidia-settings'), call('nvidia-smi')])
 
     def test_get_default_mode__must_return_auto(self):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual(NvidiaPowerMode.AUTO, driver.get_default_mode())
 
     def test_get_performance_mode__must_return_performance(self):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual(NvidiaPowerMode.PERFORMANCE, driver.get_performance_mode())
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, '0 \n 1 '))
     async def test_get_gpus__must_call_nvidia_smi_to_list_available_gpu_indexes(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual({'0', '1'}, await driver.get_gpus())
         async_syscall.assert_called_once_with('nvidia-smi --query-gpu=index --format=csv,noheader')
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(1, '0 \n 1 '))
     async def test_get_gpus__must_return_empty_set_when_exitcode_is_not_zero(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual(set(), await driver.get_gpus())
         async_syscall.assert_called_once()
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, ''))
     async def test_get_gpus__must_return_empty_set_when_no_output(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual(set(), await driver.get_gpus())
         async_syscall.assert_called_once()
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]): 2.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]): 1.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:2]): 0 "))
     async def test_get_power_mode__return_modes_from_nvidia_settings_query_for_defined_ids(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertEqual({'0': NvidiaPowerMode.AUTO,
                           '1': NvidiaPowerMode.PERFORMANCE}, await driver.get_power_mode({'0', '1'}))  # gpu '2' mode must not be returned
         async_syscall.assert_called_once()
@@ -69,13 +69,13 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(1, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]): 2.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]): 1."))
     async def test_get_power_mode__return_none_when_exitcode_nonzero(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
         self.assertIsNone(await driver.get_power_mode({'0', '1'}))
         async_syscall.assert_called_once()
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]) assigned value 1.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]) assigned value 0.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:2]) assigned value 2."))
     async def test_set_power_mode__must_change_defined_gpus_to_defined_mode(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
 
         env = {'TEST': 1, 'LANG': 'fr.UTF-8'}
         res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.ON_DEMAND}, user_environment=env)
@@ -89,7 +89,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(0, "Attribute 'GPUPowerMizerMode' (user:0[gpu:0]) assigned value 1.\nAttribute 'GPUPowerMizerMode' (user:0[gpu:1]) assigned value 0."))
     async def test_set_power_mode__return_not_changed_gpu_mode_as_a_false_value(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
 
         res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': True, '1': False}, res)
@@ -97,7 +97,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(1, "error"))
     async def test_set_power_mode__return_false_for_all_gpus_when_unknown_output(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
 
         res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': False, '1': False}, res)
@@ -105,7 +105,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(1, ""))
     async def test_set_power_mode__return_false_for_all_gpus_when_empty_output(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
 
         res = await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.PERFORMANCE})
         self.assertEqual({'0': False, '1': False}, res)
@@ -113,7 +113,7 @@ class NvidiaGPUDriverTest(IsolatedAsyncioTestCase):
 
     @patch(f'{__app_name__}.service.optimizer.gpu.system.async_syscall', return_value=(1, ""))
     async def test_set_power_mode__must_call_nvidia_settings_with_english_as_default_language_when_no_user_env_is_defined(self, async_syscall: Mock):
-        driver = NvidiaGPUDriver(cache=False, logger=Mock())
+        driver = NvidiaGPUDriver(cache=False, only_connected=False, logger=Mock())
 
         await driver.set_power_mode({'0': NvidiaPowerMode.PERFORMANCE, '1': NvidiaPowerMode.ON_DEMAND}, user_environment=None)
         self.assertTrue(async_syscall.call_args.args[0].startswith('nvidia-settings '))

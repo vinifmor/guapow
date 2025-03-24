@@ -63,11 +63,11 @@ class GPUManagerTest(IsolatedAsyncioTestCase):
         driver_2.get_cached_gpus.assert_called_once()
 
     async def test_map_working_drivers_and_gpus__must_lock_concurrent_requests_when_cache_is_on(self):
-        driver_1 = AMDGPUDriver(cache=True, logger=Mock())
+        driver_1 = AMDGPUDriver(cache=True, only_connected=False, logger=Mock())
         driver_1.can_work = Mock(return_value=(True, None))
         driver_1.get_gpus = AsyncMock(return_value={'0'})
 
-        man = GPUManager(Mock(), drivers=(driver_1,), cache_gpus=True)
+        man = GPUManager(Mock(), drivers=(driver_1,), cache_gpus=True, only_connected=False)
         self.assertIsNone(man.get_cached_working_drivers())
 
         async def mock_map_working_drivers() -> List[Tuple[GPUDriver, Set[str]]]:
