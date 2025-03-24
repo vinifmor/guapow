@@ -9,7 +9,7 @@ from copy import deepcopy
 from glob import glob
 from logging import Logger, ERROR, DEBUG, WARNING, INFO
 from re import Pattern
-from typing import Optional, Tuple, Set, Dict, List, Type, AsyncIterator, Any
+from typing import Optional, Tuple, Set, Dict, List, Type, AsyncIterator, Any, AsyncGenerator
 
 import aiofiles
 
@@ -26,12 +26,13 @@ class UnknownGPUDriver(Exception):
 class GPUDriver(ABC):
 
     @abstractmethod
-    def __init__(self, cache: bool, logger: Logger):
+    def __init__(self, cache: bool, only_connected: bool, logger: Logger):
         self._logger = logger
         self._lock = Lock()
         self._cache_lock = Lock() if cache else None
         self._gpus: Optional[Set[str]] = None
         self._cached = False
+        self._only_connected = only_connected
 
     def lock(self) -> Lock:
         return self._lock
@@ -100,8 +101,8 @@ class NvidiaPowerMode(CustomEnum):
 
 class NvidiaGPUDriver(GPUDriver):
 
-    def __init__(self, cache: bool, logger: Logger):
-        super(NvidiaGPUDriver, self).__init__(cache, logger)
+    def __init__(self, cache: bool, only_connected: bool, logger: Logger):
+        super(NvidiaGPUDriver, self).__init__(cache, only_connected, logger)
         self._re_set_power: Optional[Pattern] = None
         self._re_get_power: Optional[Pattern] = None
 
@@ -207,9 +208,10 @@ class AMDGPUDriver(GPUDriver):
     PROFILE_FILE = "pp_power_profile_mode"
     VENDOR = "AMD"
 
-    def __init__(self, cache: bool, logger: Logger, gpus_path: str = "/sys/class/drm/card{id}/device"):
-        super(AMDGPUDriver, self).__init__(cache, logger)
+    def __init__(self, cache: bool, only_connected: bool, logger: Logger, gpus_path: str = "/sys/class/drm/card{id}"):
+        super(AMDGPUDriver, self).__init__(cache, only_connected, logger)
         self._gpus_path = gpus_path
+        self._gpu_device_path = self._gpus_path + "/device"
         self._re_power_mode: Optional[Pattern] = None
         self._re_extract_id: Optional[Pattern] = None
 
@@ -230,26 +232,68 @@ class AMDGPUDriver(GPUDriver):
     @property
     def re_extract_id(self) -> Pattern:
         if not self._re_extract_id:
-            self._re_extract_id = re.compile(self._gpus_path.replace('{id}', r'(\d+)'))
+            self._re_extract_id = re.compile(self._gpus_path.replace('{id}', r'(\d+).+'))
 
         return self._re_extract_id
 
-    def extract_gpu_id(self, gpu_path: str) -> Optional[int]:
+    def extract_gpu_id(self, gpu_path: str) -> Optional[str]:
         try:
             return self.re_extract_id.findall(gpu_path)[0]
         except IndexError:
             self._log(f"Could not extract GPU id from path: {gpu_path}", ERROR)
 
+
+    async def get_connected_gpus(self) -> Set[str]:
+        self._log("Reading connected GPUs", DEBUG)
+
+        gpus_status_query = self._gpus_path.replace("{id}", "*") + "/status"
+
+        connected = set()
+        for status_path in glob(gpus_status_query):
+            gpu_id = self.extract_gpu_id(status_path)
+
+            # Only checking the status if the GPU has not yet been identified as connected. This avoids unnecessary I/O
+            # since GPUs generally have multiple available ports, which the OS maps as different card directories
+            # (e.g., card0-DP-1, card0-HDMI-1, ...).
+            if gpu_id and gpu_id not in connected:
+                async with aiofiles.open(status_path) as file:
+                    try:
+                        status = (await file.read()).strip().lower()
+                    except Exception:
+                        self._log(f"Could not read GPU status from '{status_path}'", ERROR)
+                        continue
+
+                    if status == "connected":
+                        connected.add(gpu_id)
+
+        return connected
+
     async def get_gpus(self) -> Optional[Set[str]]:
+        connected_gpus: Optional[Set[str]] = None
+
+        if self._only_connected:
+            connected_gpus = await self.get_connected_gpus()
+
+            if not connected_gpus:
+                self._log("no connected GPUs found", WARNING)
+                return None
+
+            self._log(f"connected GPUs detected: {','.join((str(g) for g in sorted(connected_gpus)))}")
+
         required_files = {self.PERFORMANCE_FILE: set(), self.PROFILE_FILE: set()}
 
-        for gpu_file_path in glob(f"{self._gpus_path.format(id='*')}/*"):
+        for gpu_file_path in glob(f"{self._gpu_device_path.format(id='*')}/*"):
+            gpu_id = self.extract_gpu_id(gpu_file_path)
+
+            if self._only_connected and gpu_id not in connected_gpus:
+                # if only connected GPUs should be considered, then skip any I/O related to disconnected GPUs
+                continue
+
             gpu_file = os.path.basename(gpu_file_path)
             if gpu_file in required_files:
                 if not os.access(gpu_file_path, mode=os.W_OK):
-                    id_ = self.extract_gpu_id(gpu_file_path)
                     self._log(f"Writing is not allowed for file '{gpu_file_path}. It will not be possible to set "
-                              f"the GPU ({id_}) to performance mode", WARNING)
+                              f"the GPU ({gpu_id}) to performance mode", WARNING)
                 else:
                     required_files[gpu_file].add(os.path.dirname(gpu_file_path))
 
@@ -298,7 +342,7 @@ class AMDGPUDriver(GPUDriver):
             self._log(f"could not map power profile from {file_path}. Content: {content_log}", WARNING)
 
     async def _fill_power_mode(self, gpu_id: str, gpu_modes: Dict[str, str]):
-        gpu_dir = self._gpus_path.format(id=gpu_id)
+        gpu_dir = self._gpu_device_path.format(id=gpu_id)
         performance_level_file = f"{gpu_dir}/{self.PERFORMANCE_FILE}"
         performance_level = (await self._read_file(performance_level_file)).strip()
         self._log(f"GPU file ({performance_level_file}): {performance_level}", DEBUG)
@@ -344,7 +388,7 @@ class AMDGPUDriver(GPUDriver):
                 mode = mode_str.split(':')
 
                 if len(mode) == 2:
-                    gpu_dir = self._gpus_path.format(id=id_)
+                    gpu_dir = self._gpu_device_path.format(id=id_)
                     self._log(f"changing GPU ({id_}) operation mode (performance: {mode[0]}, profile: {mode[1]})")
                     writes[id_] = list()
                     coros.append(self._fill_write_result(f'{gpu_dir}/{self.PERFORMANCE_FILE}', mode[0], id_, writes))
@@ -393,7 +437,8 @@ class GPUManager:
     LOG_CACHE_KEY__WORK = 0
     LOG_CACHE_KEY__AVAILABLE = 1
 
-    def __init__(self, logger: Logger, drivers: Optional[Tuple[GPUDriver]] = None, cache_gpus: bool = False):
+    def __init__(self, logger: Logger, drivers: Optional[Tuple[GPUDriver]] = None, cache_gpus: bool = False,
+                 only_connected: bool = True):
         self._log = logger
         self._drivers = drivers
         self._drivers_lock = Lock()
@@ -401,6 +446,7 @@ class GPUManager:
         self._gpu_state_cache: Dict[Type[GPUDriver], Dict[str, Any]] = {}
         self._gpu_state_cache_lock = Lock()
         self._log_cache: Dict[Type[GPUDriver], Dict[int, object]] = {}  # to avoid repetitive logs
+        self._only_connected = only_connected
         self._working_drivers_cache: Optional[Tuple[GPUDriver]] = None  # only when 'cache_gpus'
         self._working_drivers_cache_lock = Lock()
 
@@ -465,7 +511,7 @@ class GPUManager:
         async with self._drivers_lock:
             if self._drivers is None:
                 driver_types = GPUDriver.__subclasses__()
-                self._drivers = tuple(cls(self._cache_gpus, self._log) for cls in driver_types if cls != self.__class__)
+                self._drivers = tuple(cls(self._cache_gpus, self._only_connected, self._log) for cls in driver_types if cls != self.__class__)
 
         if self._drivers:
             if self._cache_gpus:

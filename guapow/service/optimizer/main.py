@@ -83,7 +83,9 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
 
         if gpu_driver:
             logger.info(f'Pre-defined GPU vendor: {opt_config.gpu_vendor}')
-            gpu_drivers = (gpu_driver(cache=opt_config.gpu_cache, logger=logger),)
+            gpu_drivers = (gpu_driver(cache=opt_config.gpu_cache,
+                                      only_connected=opt_config.gpu_only_connected,
+                                      logger=logger),)
         else:
             logger.warning(f'Invalid pre-defined GPU vendor: {opt_config.gpu_vendor}')
 
@@ -93,8 +95,8 @@ async def prepare_app() -> Tuple[web.Application, OptimizerConfig]:
     if not opt_config.gpu_cache:
         logger.warning("Available GPUs cache is disabled. Available GPUs will be mapped for every request")
 
-    gpu_man = GPUManager(cache_gpus=opt_config.gpu_cache, logger=logger, drivers=gpu_drivers)
-
+    gpu_man = GPUManager(cache_gpus=opt_config.gpu_cache, only_connected=opt_config.gpu_only_connected,
+                         logger=logger, drivers=gpu_drivers)
     cpu_count = get_cpu_count()
     cpufreq_man = CPUFrequencyManager(logger=logger, cpu_count=cpu_count)
     cpu_energy_man = CPUEnergyPolicyManager(logger=logger, cpu_count=cpu_count)
