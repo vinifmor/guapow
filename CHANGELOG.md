@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [NEXT]
+## [1.3.5]
 ### Improvements
 - Only GPUs connected to a display device will be considered for optimizations by default
   - this behavior is controlled by the new optimizer service configuration property `gpu.only_connected`
