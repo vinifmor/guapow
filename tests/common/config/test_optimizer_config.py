@@ -178,12 +178,21 @@ class OptimizerConfigTest(TestCase):
         config.launcher_mapping_timeout = 0
         self.assertFalse(config.is_valid())
 
+    def test_is_valid__true_when_gpu_only_connected_is_bool(self):
+        config = OptimizerConfig.default()
+        config.gpu_only_connected = False
+        self.assertTrue(config.is_valid())
+
     def test_default__must_be_valid(self):
         self.assertTrue(OptimizerConfig.default().is_valid())
 
     def test_default__gpu_cache_must_be_false(self):
         instance = OptimizerConfig.default()
         self.assertEqual(False, instance.gpu_cache)
+
+    def test_default__gpu_only_connected_must_be_true(self):
+        instance = OptimizerConfig.default()
+        self.assertEqual(True, instance.gpu_only_connected)
 
     def test_default__allow_root_scripts_must_be_false(self):
         instance = OptimizerConfig.default()

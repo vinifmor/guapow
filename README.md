@@ -472,6 +472,7 @@ makepkg -si
           launcher.mapping.found_timeout = 10 (maximum time in seconds to still keep looking for a process mapped to a different process after a match. This property also affects the period to look for Steam subprocesses.  float values are allowed)
           gpu.cache = false (if 'true': maps all available GPUs once after the first request (if running as a system service) or during startup (if not running as system service). Otherwise, GPUs will be mapped for every request)
           gpu.id = # comma separated list of integers representing which GPU cards should be optimized (e.g: 0, 1). If not defined, all available GPUs are considered (default)
+          gpu.only_connected = true  # only GPUs connected to a display device will be considered for optimizations (AMD only)
           gpu.vendor =  # pre-defines your GPU vendor for faster GPUs mapping. Supported: nvidia, amd
           cpu.performance = false  (set cpu governors and energy policy levels to full performance on startup)
           request.allowed_users = (restricts users that can request optimizations, separated by comma. e.g: root,xpto)

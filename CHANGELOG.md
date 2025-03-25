@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.3.5] 2025-03-25
+### Improvements
+- Only GPUs connected to a display device will be considered for optimizations by default
+  - this behavior is controlled by the new optimizer service configuration property `gpu.only_connected`
+  - this behavior is only implemented for AMD GPUs at the moment
+
 ## [1.3.4] 2024-01-16
 ### Improvements
 - do not try to disable window compositors when `compositor.off` if requested from a wayland session

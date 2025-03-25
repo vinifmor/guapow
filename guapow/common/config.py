@@ -79,6 +79,7 @@ class OptimizerConfig(RootFileModel):
                     'gpu.cache': ('gpu_cache', bool, True),
                     'gpu.id': ('gpu_ids', Set[int], None),
                     'gpu.vendor': ('gpu_vendor', str, None),
+                    'gpu.only_connected': ('gpu_only_connected', bool, True),
                     'cpu.performance': ('cpu_performance', bool, True),
                     'profile.cache': ('profile_cache', bool, True),
                     'profile.pre_caching': ('pre_cache_profiles', bool, True),
@@ -94,7 +95,8 @@ class OptimizerConfig(RootFileModel):
                  pre_cache_profiles: Optional[bool] = None, gpu_vendor: Optional[str] = None,
                  renicer_interval: Optional[float] = None, gpu_ids: Optional[Set[int]] = None,
                  optimize_children_timeout: Optional[float] = 30,
-                 optimize_children_found_timeout: Optional[float] = 10):
+                 optimize_children_found_timeout: Optional[float] = 10,
+                 gpu_only_connected: Optional[bool] = True):
         self.port = port
         self.compositor = compositor
         self.allow_root_scripts = allow_root_scripts
@@ -104,6 +106,7 @@ class OptimizerConfig(RootFileModel):
         self.gpu_cache = gpu_cache
         self.gpu_vendor = gpu_vendor
         self.gpu_ids = gpu_ids
+        self.gpu_only_connected = gpu_only_connected
         self.cpu_performance = cpu_performance
         self.request = RequestSettings.default()
         self.profile_cache = profile_cache
@@ -182,6 +185,9 @@ class OptimizerConfig(RootFileModel):
 
         if self.gpu_cache is None:
             self.gpu_cache = False
+
+        if self.gpu_only_connected is None:
+            self.gpu_only_connected = True
 
         if self.profile_cache is None:
             self.profile_cache = False
